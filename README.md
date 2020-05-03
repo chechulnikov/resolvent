@@ -29,5 +29,6 @@ To restart
     brew install elm
     brew install elm-format
     npm install -g elm-test
+    npm install -g elm-live
     ```
 2. `./scripts/debug.run.sh`
