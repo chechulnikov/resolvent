@@ -11,9 +11,11 @@
 <body>
     <div id="appContainer"></div>
     <script>
-        const app = Elm.Main.init({ node: document.getElementById('appContainer')});
+        window.onload = () => {
+            const app = Elm.Main.init({ node: document.getElementById('appContainer')});
 
-        initPorts(app);
+            initPorts(app);
+        };
     </script>
 </body>
 </html>

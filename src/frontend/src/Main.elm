@@ -42,7 +42,9 @@ document model =
 
 init : () -> Url -> Key -> (Model, Cmd msg)
 init _ _ _ =
-    (ProcessDesignerModel Editor TestData.testProcess, Cmd.none)
+    ( ProcessDesignerModel (ProcessDesigner.Model TestData.testProcessDesignerModel Editor Nothing)
+    , Cmd.none
+    )
 
 
 
@@ -50,7 +52,7 @@ init _ _ _ =
 
 
 type Model
-    = ProcessDesignerModel Mode Process
+    = ProcessDesignerModel ProcessDesigner.Model
 
 
 
@@ -78,23 +80,42 @@ update msg model =
 
         ProcessDesignerMsg processEditorMsg ->
             let
-                (ProcessDesignerModel mode process) = model
+                (ProcessDesignerModel designer) = model
             in
             case processEditorMsg of
-                ProcessDesigner.NewItem item ->
-                    let
-                        updatedProcess =
-                            { process | items = List.append process.items [ item ] }
-                    in
-                    (ProcessDesignerModel mode updatedProcess, Cmd.none)
+                ProcessDesigner.Idle ->
+                    (model, Cmd.none)
 
-                ProcessDesigner.NewSubProcess subProcess ->
-                    let
-                        updatedProcess =
-                            { process | subProcesses = List.append process.subProcesses [ subProcess ] }
-                    in
-                    (ProcessDesignerModel mode updatedProcess, Cmd.none)
+                ProcessDesigner.NewProcess process ->
+                    ( designer |> addProcess process |> ProcessDesignerModel
+                    , Cmd.none
+                    )
 
+                ProcessDesigner.NewItem process processItem itemIndex ->
+                    ( designer |> addItemToProcess itemIndex processItem process |> ProcessDesignerModel
+                    , Cmd.none
+                    )
+
+                ProcessDesigner.NewItemSlot process ->
+                    ( designer |> addItemSlotToProcess process |> ProcessDesignerModel
+                    , Cmd.none
+                    )
+
+                ProcessDesigner.NewSubProcess process subProcess ->
+                    ( designer |> addSubProcessToProcess subProcess process |> ProcessDesignerModel
+                    , Cmd.none
+                    )
+
+                ProcessDesigner.DragProcessItem draggingState ->
+                    ( ProcessDesignerModel
+                        { designer | draggingState = Just draggingState }
+                    , Cmd.none
+                    )
+
+                ProcessDesigner.DropProcessItem target ->
+                    ( designer |> dragAndDropItem target |> ProcessDesignerModel
+                    , Cmd.none
+                    )
 
 
 
@@ -113,7 +134,7 @@ subscriptions _ =
 view : Model -> Html Msg
 view model =
     case model of
-         ProcessDesignerModel mode process ->
+         ProcessDesignerModel designerModel ->
             div []
-                [ ProcessDesigner.view mode process |> Html.Styled.toUnstyled |> Html.map ProcessDesignerMsg
+                [ ProcessDesigner.view designerModel |> Html.Styled.toUnstyled |> Html.map ProcessDesignerMsg
                 ]
