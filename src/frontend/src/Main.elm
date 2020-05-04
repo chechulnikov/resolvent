@@ -42,7 +42,7 @@ document model =
 
 init : () -> Url -> Key -> (Model, Cmd msg)
 init _ _ _ =
-    ( ProcessDesignerModel (ProcessDesigner.Model TestData.testProcessDesignerModel Editor Nothing)
+    ( ProcessDesignerModel (ProcessDesigner.Model TestData.testProcessDesignerModel Editor Nothing Nothing)
     , Cmd.none
     )
 
@@ -97,7 +97,7 @@ update msg model =
                     )
 
                 ProcessDesigner.NewItemSlot process ->
-                    ( designer |> addItemSlotToProcess process |> ProcessDesignerModel
+                    ( designer |> addItemSlot process |> ProcessDesignerModel
                     , Cmd.none
                     )
 
@@ -107,13 +107,22 @@ update msg model =
                     )
 
                 ProcessDesigner.DragProcessItem draggingState ->
-                    ( ProcessDesignerModel
-                        { designer | draggingState = Just draggingState }
+                    ( ProcessDesignerModel { designer | draggingProcessItemState = Just draggingState }
                     , Cmd.none
                     )
 
                 ProcessDesigner.DropProcessItem target ->
-                    ( designer |> dragAndDropItem target |> ProcessDesignerModel
+                    ( designer |> dragAndDropProcessItem target |> ProcessDesignerModel
+                    , Cmd.none
+                    )
+
+                ProcessDesigner.DragEmptyItem draggingState ->
+                    ( ProcessDesignerModel { designer | draggingEmptyItemState = Just draggingState }
+                    , Cmd.none
+                    )
+
+                ProcessDesigner.DropEmptyItem ->
+                    ( designer |> dragAndDropEmptyItemToBin |> ProcessDesignerModel
                     , Cmd.none
                     )
 

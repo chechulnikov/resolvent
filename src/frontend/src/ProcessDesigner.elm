@@ -6,7 +6,7 @@ import Html.Styled.Attributes exposing (attribute, css)
 import Html.Styled.Events exposing (..)
 import Json.Decode as Decode
 import List.Extra as List
-import Utils exposing (boolToMaybe, ifTrueThenUpdate)
+import Utils exposing (ifTrueThenUpdate)
 
 
 type Msg
@@ -15,14 +15,17 @@ type Msg
     | NewItem Process ProcessItem Int
     | NewItemSlot Process
     | NewSubProcess Process SubProcess
-    | DragProcessItem DraggingState
-    | DropProcessItem DropItemTarget
+    | DragProcessItem DraggingProcessItemState
+    | DropProcessItem DropProcessItemTarget
+    | DragEmptyItem DraggingEmptyItemState
+    | DropEmptyItem
 
 
 type alias Model =
     { processes : List Process
     , mode : Mode
-    , draggingState : Maybe DraggingState
+    , draggingProcessItemState : Maybe DraggingProcessItemState
+    , draggingEmptyItemState : Maybe DraggingEmptyItemState
     }
 
 
@@ -49,9 +52,15 @@ type alias ProcessItem =
     }
 
 
-type alias DraggingState =
+type alias DraggingProcessItemState =
     { process : Process
     , item : ProcessItem
+    , itemIndex : Int
+    }
+
+
+type alias DraggingEmptyItemState =
+    { process : Process
     , itemIndex : Int
     }
 
@@ -61,7 +70,7 @@ type Mode
     | Editor
 
 
-type DropItemTarget
+type DropProcessItemTarget
     = DropOnEmptySlot Int
     | DropOnNewSlot
     | DropInBin
@@ -81,18 +90,6 @@ addItemToProcess itemIndex item process model =
     let
         update p =
             { p | items = p.items |> List.updateAt itemIndex (\_ -> Just item) }
-
-        updatedProcesses =
-            model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.name == process.name))
-    in
-    { model | processes = updatedProcesses }
-
-
-addItemSlotToProcess : Process -> Model -> Model
-addItemSlotToProcess process model =
-    let
-        update p =
-            { p | items = List.append p.items [ Nothing ] }
 
         updatedProcesses =
             model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.name == process.name))
@@ -125,15 +122,15 @@ removeItemFromProcess itemIndex process model =
     { model | processes = updatedProcesses }
 
 
-dragAndDropItem : DropItemTarget -> Model -> Model
-dragAndDropItem target model =
-    model.draggingState
+dragAndDropProcessItem : DropProcessItemTarget -> Model -> Model
+dragAndDropProcessItem target model =
+    model.draggingProcessItemState
         |> Maybe.map
             (\{ process, item, itemIndex } ->
                 case target of
                     DropOnNewSlot ->
                         model
-                            |> addItemSlotToProcess process
+                            |> addItemSlot process
                             |> addItemToProcess (List.length process.items) item process
                             |> removeItemFromProcess itemIndex process
 
@@ -146,6 +143,40 @@ dragAndDropItem target model =
                             |> removeItemFromProcess itemIndex process
             )
         |> Maybe.withDefault model
+        |> (\m -> { m | draggingProcessItemState = Nothing })
+
+
+addItemSlot : Process -> Model -> Model
+addItemSlot process model =
+    let
+        update p =
+            { p | items = List.append p.items [ Nothing ] }
+
+        updatedProcesses =
+            model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.name == process.name))
+    in
+    { model | processes = updatedProcesses }
+
+
+removeEmptySlot : Int -> Process -> Model -> Model
+removeEmptySlot itemIndex process model =
+    let
+        update p =
+            { p | items = p.items |> List.removeAt itemIndex }
+
+        updatedProcesses =
+            model.processes
+                |> List.map (\p -> ifTrueThenUpdate update p (p.id == process.id))
+    in
+    { model | processes = updatedProcesses }
+
+
+dragAndDropEmptyItemToBin : Model -> Model
+dragAndDropEmptyItemToBin model =
+    model.draggingEmptyItemState
+        |> Maybe.map (\{ process, itemIndex } -> removeEmptySlot itemIndex process model)
+        |> Maybe.withDefault model
+        |> (\m -> { m | draggingEmptyItemState = Nothing })
 
 
 
@@ -236,7 +267,7 @@ viewProcessItem process processItem =
                 , cursor pointer
                 ]
             ]
-        , on "dragstart" (Decode.succeed (DragProcessItem (DraggingState process processItem itemIndex)))
+        , on "dragstart" (Decode.succeed (DragProcessItem (DraggingProcessItemState process processItem itemIndex)))
         , attribute "draggable" "true"
         ]
         [ div
@@ -274,10 +305,11 @@ viewEmptyItem process itemIndex =
                 , opacity (num 0.85)
                 ]
             ]
-        , onClick
-            (NewItem process { id = newItemName, name = newItemName, description = "" } itemIndex)
+        , onClick (NewItem process { id = newItemName, name = newItemName, description = "" } itemIndex)
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
         , on "drop" (Decode.succeed (DropProcessItem (DropOnEmptySlot itemIndex)))
+        , on "dragstart" (Decode.succeed (DragEmptyItem { process = process, itemIndex = itemIndex }))
+        , attribute "draggable" "true"
         ]
         [ div [] [ text "EMPTY" ] ]
 
@@ -349,6 +381,17 @@ viewAddProcessButton model =
 
 
 viewBin model =
+    let
+        getDropMsg m =
+            if m.draggingProcessItemState /= Nothing then
+                DropProcessItem DropInBin
+
+            else if m.draggingEmptyItemState /= Nothing then
+                DropEmptyItem
+
+            else
+                Idle
+    in
     div
         [ css
             [ border3 (rem 0.1) dashed (rgb 4 4 4)
@@ -366,6 +409,6 @@ viewBin model =
                 ]
             ]
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
-        , on "drop" (Decode.succeed (DropProcessItem DropInBin))
+        , on "drop" (Decode.succeed (getDropMsg model))
         ]
         [ div [] [ text "🗑️" ] ]
