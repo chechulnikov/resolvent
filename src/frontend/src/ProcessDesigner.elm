@@ -15,10 +15,15 @@ type Msg
     | NewItem Process ProcessItem Int
     | NewItemSlot Process
     | NewSubProcess Process SubProcess
-    | DragProcessItem DraggingProcessItemState
+    | DragProcessItemStart DraggingProcessItemState
+    | DragProcessItemEnd
     | DropProcessItem DropProcessItemTarget
-    | DragEmptyItem DraggingEmptyItemState
+    | DragEmptyItemStart DraggingEmptyItemState
+    | DragEmptyItemEnd
     | DropEmptyItem
+    | DragProcessStart DraggingProcessState
+    | DragProcessEnd
+    | DropProcess
 
 
 type alias Model =
@@ -26,6 +31,7 @@ type alias Model =
     , mode : Mode
     , draggingProcessItemState : Maybe DraggingProcessItemState
     , draggingEmptyItemState : Maybe DraggingEmptyItemState
+    , draggingProcessState : Maybe DraggingProcessState
     }
 
 
@@ -62,6 +68,11 @@ type alias DraggingProcessItemState =
 type alias DraggingEmptyItemState =
     { process : Process
     , itemIndex : Int
+    }
+
+
+type alias DraggingProcessState =
+    { process : Process
     }
 
 
@@ -179,6 +190,19 @@ dragAndDropEmptyItemToBin model =
         |> (\m -> { m | draggingEmptyItemState = Nothing })
 
 
+removeProcess : Process -> Model -> Model
+removeProcess process model =
+    { model | processes = model.processes |> List.remove process }
+
+
+dragAndDropProcessToBin : Model -> Model
+dragAndDropProcessToBin model =
+    model.draggingProcessState
+        |> Maybe.map (\{ process } -> removeProcess process model)
+        |> Maybe.withDefault model
+        |> (\m -> { m | draggingProcessState = Nothing })
+
+
 
 -- VIEW
 
@@ -223,7 +247,16 @@ viewProcess mode process =
     div
         [ css
             [ displayFlex
+            , before
+                [ width (rem 2)
+                , backgroundColor (rgba 4 4 4 0.1)
+                , property "content" "''"
+                , cursor move
+                ]
             ]
+        , on "dragstart" (Decode.succeed (DragProcessStart { process = process }))
+        , on "dragend" (Decode.succeed DragProcessEnd)
+        , attribute "draggable" "true"
         ]
         viewProcessItems
 
@@ -267,7 +300,8 @@ viewProcessItem process processItem =
                 , cursor pointer
                 ]
             ]
-        , on "dragstart" (Decode.succeed (DragProcessItem (DraggingProcessItemState process processItem itemIndex)))
+        , on "dragstart" (Decode.succeed (DragProcessItemStart (DraggingProcessItemState process processItem itemIndex)))
+        , on "dragend" (Decode.succeed DragProcessItemEnd)
         , attribute "draggable" "true"
         ]
         [ div
@@ -308,7 +342,8 @@ viewEmptyItem process itemIndex =
         , onClick (NewItem process { id = newItemName, name = newItemName, description = "" } itemIndex)
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
         , on "drop" (Decode.succeed (DropProcessItem (DropOnEmptySlot itemIndex)))
-        , on "dragstart" (Decode.succeed (DragEmptyItem { process = process, itemIndex = itemIndex }))
+        , on "dragstart" (Decode.succeed (DragEmptyItemStart { process = process, itemIndex = itemIndex }))
+        , on "dragend" (Decode.succeed DragEmptyItemEnd)
         , attribute "draggable" "true"
         ]
         [ div [] [ text "EMPTY" ] ]
@@ -388,6 +423,9 @@ viewBin model =
 
             else if m.draggingEmptyItemState /= Nothing then
                 DropEmptyItem
+
+            else if m.draggingProcessState /= Nothing then
+                DropProcess
 
             else
                 Idle
