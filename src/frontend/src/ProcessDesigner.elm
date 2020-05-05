@@ -13,8 +13,9 @@ import Utils exposing (boolToString, ifTrueThenUpdate)
 type Msg
     = Idle
     | ToggleMode Mode
-    | NewProcess Process
-    | NewItem Process ProcessItem Int
+    | TempIdRequested (Int -> Msg)
+    | NewProcess Process Int
+    | NewItem Process ProcessItem Int Int
     | NewItemSlot Process
     | NewSubProcess Process SubProcess
     | DragProcessItemStart DraggingProcessItemState
@@ -106,9 +107,19 @@ toggleMode mode model =
     { model | mode = mode }
 
 
+newProcess : Int -> Process -> Model -> Model
+newProcess tempId process model =
+    addProcess { process | id = String.fromInt tempId } model
+
+
 addProcess : Process -> Model -> Model
 addProcess process model =
     { model | processes = List.append model.processes [ process ] }
+
+
+newItemToProcess : Int -> Int -> ProcessItem -> Process -> Model -> Model
+newItemToProcess tempId itemIndex item process model =
+    addItemToProcess itemIndex { item | id = String.fromInt tempId } process model
 
 
 addItemToProcess : Int -> ProcessItem -> Process -> Model -> Model
@@ -118,7 +129,7 @@ addItemToProcess itemIndex item process model =
             { p | items = p.items |> List.updateAt itemIndex (\_ -> Just item) }
 
         updatedProcesses =
-            model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.name == process.name))
+            model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.id == process.id))
     in
     { model | processes = updatedProcesses }
 
@@ -184,7 +195,7 @@ addItemSlot process model =
             { p | items = List.append p.items [ Nothing ] }
 
         updatedProcesses =
-            model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.name == process.name))
+            model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.id == process.id))
     in
     { model | processes = updatedProcesses }
 
@@ -229,6 +240,10 @@ dragAndDropProcessToBin model =
 
 attrDraggable mode =
     attribute "draggable" (boolToString (mode == Editor))
+
+
+attrEditable mode =
+    attribute "contenteditable" (boolToString (mode == Editor))
 
 
 -- VIEW
@@ -304,6 +319,7 @@ viewProcess mode droppableAreaMode process =
             [ displayFlex
             , before
                 [ width (rem 2)
+                , minWidth (rem 2)
                 , margin (rem 0.25)
                 , backgroundColor (hex "#606dbc")
                 , property "content" "''"
@@ -321,12 +337,16 @@ viewProcessItem mode process processItem =
     let
         viewName =
             div
-                [ css
-                    [ textAlign center
-                    ]
+                [ css []
                 ]
-                [ div [] [ text processItem.name ]
-                , div [] [ text processItem.description ]
+                [ div
+                    [ attrEditable mode
+                    , css
+                        [ focus [ outline none ]
+                        , whiteSpace noWrap
+                        ]
+                    ]
+                    [ text processItem.name ]
                 ]
 
         itemIndex =
@@ -342,7 +362,6 @@ viewProcessItem mode process processItem =
             , minWidth (rem 10)
             , height (rem 5)
             , overflowX hidden
-            , whiteSpace noWrap
             , hover
                 [ border3 (rem 0.1) solid (rgb 10 124 10)
                 , backgroundColor (rgb 216 255 211)
@@ -412,7 +431,8 @@ viewEmptyItem mode droppableAreaMode process itemIndex =
                 , opacity (num 0.85)
                 ]
             ]
-        , onClick (NewItem process { id = newItemName, name = newItemName, description = "" } itemIndex)
+        --, onClick (NewItem process { id = newItemName, name = newItemName, description = "" } itemIndex)
+        , onClick (TempIdRequested (NewItem process { id = "", name = newItemName, description = "" } itemIndex))
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
         , attrDraggable mode
         , on "drop" (Decode.succeed (DropProcessItem (DropOnEmptySlot process itemIndex)))
@@ -499,7 +519,7 @@ viewAddProcessButton model =
                 , opacity (num 0.85)
                 ]
             ]
-        , onClick (NewProcess (Process newProcessName newProcessName [] []))
+        , onClick (TempIdRequested (NewProcess (Process newProcessName newProcessName [] [])))
         ]
         [ div [] [ text "➕" ] ]
 

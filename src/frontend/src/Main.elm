@@ -5,6 +5,7 @@ import Browser.Navigation exposing (Key)
 import Html exposing (..)
 import Html.Styled
 import ProcessDesigner exposing (..)
+import Random
 import TestData
 import Url exposing (Url)
 
@@ -85,15 +86,18 @@ update msg model =
             case processEditorMsg of
                 ProcessDesigner.Idle ->
                     (model, Cmd.none)
-                    
+
+                ProcessDesigner.TempIdRequested message ->
+                    (model, Random.generate (message >> ProcessDesignerMsg) (Random.int 10000 100000))
+
                 ProcessDesigner.ToggleMode mode ->
                     (designer |> toggleMode mode |> ProcessDesignerModel, Cmd.none)
 
-                ProcessDesigner.NewProcess process ->
-                    (designer |> addProcess process |> ProcessDesignerModel, Cmd.none)
+                ProcessDesigner.NewProcess process tempId ->
+                    (designer |> newProcess tempId process |> ProcessDesignerModel, Cmd.none)
 
-                ProcessDesigner.NewItem process processItem itemIndex ->
-                    (designer |> addItemToProcess itemIndex processItem process |> ProcessDesignerModel, Cmd.none)
+                ProcessDesigner.NewItem process item itemIndex tempId ->
+                    (designer |> newItemToProcess tempId itemIndex item process |> ProcessDesignerModel, Cmd.none)
 
                 ProcessDesigner.NewItemSlot process ->
                     (designer |> addItemSlot process |> ProcessDesignerModel, Cmd.none)
