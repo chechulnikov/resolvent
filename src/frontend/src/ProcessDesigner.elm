@@ -487,6 +487,7 @@ viewBin droppableAreaMode =
                         , backgroundColor (rgb 255 211 216)
                         , color (rgb 105 0 24)
                         , opacity (num 0.5)
+                        , display block
                         ]
             in
             case droppableAreaMode of
@@ -503,6 +504,7 @@ viewBin droppableAreaMode =
                     Css.batch
                         [ border3 (rem 0.1) dashed (rgb 4 4 4)
                         , opacity (num 0.25)
+                        , display none
                         ]
 
         dropMsg =
@@ -522,17 +524,20 @@ viewBin droppableAreaMode =
     div
         [ css
             [ droppableStyles
+            , position fixed
+            , bottom (rem 0)
+            , right (rem 0)
             , margin (rem 0.5)
             , padding (rem 0.25)
-            , width (rem 20)
-            , height (rem 5)
-            , hover
-                [ border3 (rem 0.1) solid (rgb 105 0 24)
-                , backgroundColor (rgb 255 211 216)
-                , color (rgb 105 0 24)
-                , cursor default
-                , opacity (num 0.5)
-                ]
+            , width (vw 25)
+            , height (vh 25)
+            --, hover
+            --    [ border3 (rem 0.1) solid (rgb 105 0 24)
+            --    , backgroundColor (rgb 255 211 216)
+            --    , color (rgb 105 0 24)
+            --    , cursor default
+            --    , opacity (num 0.5)
+            --    ]
             ]
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
         , on "drop" (Decode.succeed dropMsg)
