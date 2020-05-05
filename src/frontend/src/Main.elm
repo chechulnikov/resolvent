@@ -87,69 +87,43 @@ update msg model =
                     (model, Cmd.none)
 
                 ProcessDesigner.NewProcess process ->
-                    ( designer |> addProcess process |> ProcessDesignerModel
-                    , Cmd.none
-                    )
+                    (designer |> addProcess process |> ProcessDesignerModel, Cmd.none)
 
                 ProcessDesigner.NewItem process processItem itemIndex ->
-                    ( designer |> addItemToProcess itemIndex processItem process |> ProcessDesignerModel
-                    , Cmd.none
-                    )
+                    (designer |> addItemToProcess itemIndex processItem process |> ProcessDesignerModel, Cmd.none)
 
                 ProcessDesigner.NewItemSlot process ->
-                    ( designer |> addItemSlot process |> ProcessDesignerModel
-                    , Cmd.none
-                    )
+                    (designer |> addItemSlot process |> ProcessDesignerModel, Cmd.none)
 
                 ProcessDesigner.NewSubProcess process subProcess ->
-                    ( designer |> addSubProcessToProcess subProcess process |> ProcessDesignerModel
-                    , Cmd.none
-                    )
+                    (designer |> addSubProcessToProcess subProcess process |> ProcessDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragProcessItemStart draggingState ->
-                    ( ProcessDesignerModel { designer | draggingProcessItemState = Just draggingState }
-                    , Cmd.none
-                    )
+                    (ProcessDesignerModel { designer | draggingProcessItemState = Just draggingState }, Cmd.none)
 
                 ProcessDesigner.DragProcessItemEnd ->
-                    ( ProcessDesignerModel { designer | draggingProcessItemState = Nothing }
-                    , Cmd.none
-                    )
+                    (ProcessDesignerModel { designer | draggingProcessItemState = Nothing }, Cmd.none)
 
                 ProcessDesigner.DropProcessItem target ->
-                    ( designer |> dragAndDropProcessItem target |> ProcessDesignerModel
-                    , Cmd.none
-                    )
+                    (designer |> dropProcessItemOn target |> ProcessDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragEmptyItemStart draggingState ->
-                    ( ProcessDesignerModel { designer | draggingEmptyItemState = Just draggingState }
-                    , Cmd.none
-                    )
+                    (ProcessDesignerModel { designer | draggingEmptyItemState = Just draggingState }, Cmd.none)
 
                 ProcessDesigner.DragEmptyItemEnd ->
-                    ( ProcessDesignerModel { designer | draggingEmptyItemState = Nothing }
-                    , Cmd.none
-                    )
+                    (ProcessDesignerModel { designer | draggingEmptyItemState = Nothing }, Cmd.none)
 
                 ProcessDesigner.DropEmptyItem ->
-                    ( designer |> dragAndDropEmptyItemToBin |> ProcessDesignerModel
-                    , Cmd.none
-                    )
+                    (designer |> dragAndDropEmptyItemToBin |> ProcessDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragProcessStart draggingProcessState ->
-                    ( ProcessDesignerModel { designer | draggingProcessState = Just draggingProcessState }
-                    , Cmd.none
-                    )
+                    (ProcessDesignerModel { designer | draggingProcessState = Just draggingProcessState }, Cmd.none)
 
                 ProcessDesigner.DragProcessEnd ->
-                    ( ProcessDesignerModel { designer | draggingProcessState = Nothing }
-                    , Cmd.none
-                    )
+                    (ProcessDesignerModel { designer | draggingProcessState = Nothing }, Cmd.none)
 
                 ProcessDesigner.DropProcess ->
-                    ( designer |> dragAndDropProcessToBin |> ProcessDesignerModel
-                    , Cmd.none
-                    )
+                    (designer |> dragAndDropProcessToBin |> ProcessDesignerModel, Cmd.none)
 
 
 

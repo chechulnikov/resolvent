@@ -82,9 +82,10 @@ type Mode
 
 
 type DropProcessItemTarget
-    = DropOnEmptySlot Int
-    | DropOnNewSlot
+    = DropOnEmptySlot Process Int
+    | DropOnNewSlot Process
     | DropInBin
+    | DropOnAnotherProcessItem Process ProcessItem Int
 
 
 
@@ -133,25 +134,30 @@ removeItemFromProcess itemIndex process model =
     { model | processes = updatedProcesses }
 
 
-dragAndDropProcessItem : DropProcessItemTarget -> Model -> Model
-dragAndDropProcessItem target model =
+dropProcessItemOn : DropProcessItemTarget -> Model -> Model
+dropProcessItemOn target model =
     model.draggingProcessItemState
         |> Maybe.map
             (\{ process, item, itemIndex } ->
                 case target of
-                    DropOnNewSlot ->
+                    DropOnNewSlot targetProcess ->
                         model
-                            |> addItemSlot process
-                            |> addItemToProcess (List.length process.items) item process
+                            |> addItemSlot targetProcess
+                            |> addItemToProcess (List.length targetProcess.items) item targetProcess
                             |> removeItemFromProcess itemIndex process
 
                     DropInBin ->
                         removeItemFromProcess itemIndex process model
 
-                    DropOnEmptySlot targetItemIndex ->
+                    DropOnEmptySlot targetProcess targetItemIndex ->
                         model
-                            |> addItemToProcess targetItemIndex item process
+                            |> addItemToProcess targetItemIndex item targetProcess
                             |> removeItemFromProcess itemIndex process
+
+                    DropOnAnotherProcessItem targetProcess targetItem targetItemIndex ->
+                        model
+                            |> addItemToProcess itemIndex targetItem process
+                            |> addItemToProcess targetItemIndex item targetProcess
             )
         |> Maybe.withDefault model
         |> (\m -> { m | draggingProcessItemState = Nothing })
@@ -249,7 +255,8 @@ viewProcess mode process =
             [ displayFlex
             , before
                 [ width (rem 2)
-                , backgroundColor (rgba 4 4 4 0.1)
+                , margin (rem 0.25)
+                , property "background" "repeating-linear-gradient(45deg, #606dbc, #606dbc 10px, #465298 10px, #465298 20px)"
                 , property "content" "''"
                 , cursor move
                 ]
@@ -300,9 +307,11 @@ viewProcessItem process processItem =
                 , cursor pointer
                 ]
             ]
+        , attribute "draggable" "true"
         , on "dragstart" (Decode.succeed (DragProcessItemStart (DraggingProcessItemState process processItem itemIndex)))
         , on "dragend" (Decode.succeed DragProcessItemEnd)
-        , attribute "draggable" "true"
+        , on "drop" (Decode.succeed (DropProcessItem (DropOnAnotherProcessItem process processItem itemIndex)))
+        , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
         ]
         [ div
             []
@@ -341,7 +350,7 @@ viewEmptyItem process itemIndex =
             ]
         , onClick (NewItem process { id = newItemName, name = newItemName, description = "" } itemIndex)
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
-        , on "drop" (Decode.succeed (DropProcessItem (DropOnEmptySlot itemIndex)))
+        , on "drop" (Decode.succeed (DropProcessItem (DropOnEmptySlot process itemIndex)))
         , on "dragstart" (Decode.succeed (DragEmptyItemStart { process = process, itemIndex = itemIndex }))
         , on "dragend" (Decode.succeed DragEmptyItemEnd)
         , attribute "draggable" "true"
@@ -374,7 +383,7 @@ viewNewSlotButton process =
             ]
         , onClick (NewItemSlot process)
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
-        , on "drop" (Decode.succeed (DropProcessItem DropOnNewSlot))
+        , on "drop" (Decode.succeed (DropProcessItem (DropOnNewSlot process)))
         ]
         [ div [] [ text "➕" ] ]
 
