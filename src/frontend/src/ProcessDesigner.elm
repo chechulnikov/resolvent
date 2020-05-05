@@ -88,6 +88,13 @@ type DropProcessItemTarget
     | DropOnAnotherProcessItem Process ProcessItem Int
 
 
+type DroppableAreaMode
+    = Normal
+    | ReadyToReceiveProcessItem
+    | ReadyToReceiveEmptyItem
+    | ReadyToReceiveProcess
+
+
 
 -- UPDATE
 
@@ -215,11 +222,25 @@ dragAndDropProcessToBin model =
 
 view : Model -> Html Msg
 view model =
+    let
+        droppableAreaMode =
+            if model.draggingProcessItemState /= Nothing then
+                ReadyToReceiveProcessItem
+
+            else if model.draggingEmptyItemState /= Nothing then
+                ReadyToReceiveEmptyItem
+
+            else if model.draggingProcessState /= Nothing then
+                ReadyToReceiveProcess
+
+            else
+                Normal
+    in
     model.processes
-        |> List.map (viewProcess model.mode)
+        |> List.map (viewProcess model.mode droppableAreaMode)
         |> (\ps ->
             if model.mode == Editor then
-                List.append ps [ div [ css [ displayFlex ] ] [ viewAddProcessButton model, viewBin model ] ]
+                List.append ps [ div [ css [ displayFlex ] ] [ viewAddProcessButton model, viewBin droppableAreaMode ] ]
 
             else
                 ps
@@ -231,7 +252,7 @@ view model =
                 ]
             ]
 
-viewProcess mode process =
+viewProcess mode droppableAreaMode process =
     let
         viewProcessItems  =
             let
@@ -241,11 +262,11 @@ viewProcess mode process =
                             ( \itemIndex item ->
                                 item
                                     |> Maybe.map (viewProcessItem process)
-                                    |> Maybe.withDefault (viewEmptyItem process itemIndex)
+                                    |> Maybe.withDefault (viewEmptyItem droppableAreaMode process itemIndex)
                             )
             in
             if mode == Editor then
-                List.append items [ viewNewSlotButton process ]
+                List.append items [ viewNewSlotButton droppableAreaMode process ]
 
             else
                 items
@@ -320,19 +341,34 @@ viewProcessItem process processItem =
         ]
 
 
-viewEmptyItem process itemIndex =
+viewEmptyItem droppableAreaMode process itemIndex =
     let
         newItemName =
             "New item " ++ (String.fromInt (itemIndex + 1))
+
+        droppableStyles =
+            case droppableAreaMode of
+                ReadyToReceiveProcessItem ->
+                    Css.batch
+                        [ border3 (rem 0.1) dashed (rgb 15 103 15)
+                        , backgroundColor (rgb 216 255 211)
+                        , color (rgb 13 110 13)
+                        , opacity (num 0.5)
+                        ]
+
+                _ ->
+                    Css.batch
+                        [ border3 (rem 0.1) solid (rgb 255 255 255)
+                        , opacity (num 0.25)
+                        ]
     in
     div
         [ css
-            [ border3 (rem 0.1) solid (rgb 255 255 255)
+            [ droppableStyles
             , margin (rem 0.5)
             , padding (rem 0.25)
             , minWidth (rem 10)
             , height (rem 5)
-            , opacity (num 0.25)
             , hover
                 [ border3 (rem 0.1) solid (rgb 15 103 15)
                 , backgroundColor (rgb 216 255 211)
@@ -358,15 +394,31 @@ viewEmptyItem process itemIndex =
         [ div [] [ text "EMPTY" ] ]
 
 
-viewNewSlotButton process =
+viewNewSlotButton droppableAreaMode process =
+    let
+        droppableStyles =
+            case droppableAreaMode of
+                ReadyToReceiveProcessItem ->
+                    Css.batch
+                        [ border3 (rem 0.1) dashed (rgb 15 103 15)
+                        , backgroundColor (rgb 216 255 211)
+                        , color (rgb 13 110 13)
+                        , opacity (num 0.5)
+                        ]
+
+                _ ->
+                    Css.batch
+                        [ border3 (rem 0.1) dashed (rgb 4 4 4)
+                        , opacity (num 0.25)
+                        ]
+    in
     div
         [ css
-            [ border3 (rem 0.1) dashed (rgb 4 4 4)
+            [ droppableStyles
             , margin (rem 0.5)
             , padding (rem 0.25)
             , minWidth (rem 10)
             , height (rem 5)
-            , opacity (num 0.25)
             , hover
                 [ backgroundColor (rgb 216 255 211)
                 , color (rgb 13 110 13)
@@ -424,29 +476,56 @@ viewAddProcessButton model =
         [ div [] [ text "➕" ] ]
 
 
-viewBin model =
+viewBin : DroppableAreaMode -> Html Msg
+viewBin droppableAreaMode =
     let
-        getDropMsg m =
-            if m.draggingProcessItemState /= Nothing then
-                DropProcessItem DropInBin
+        droppableStyles =
+            let
+                droppableReadyStyles =
+                    Css.batch
+                        [ border3 (rem 0.1) dashed (rgb 105 0 24)
+                        , backgroundColor (rgb 255 211 216)
+                        , color (rgb 105 0 24)
+                        , opacity (num 0.5)
+                        ]
+            in
+            case droppableAreaMode of
+                ReadyToReceiveProcessItem ->
+                    droppableReadyStyles
 
-            else if m.draggingEmptyItemState /= Nothing then
-                DropEmptyItem
+                ReadyToReceiveEmptyItem ->
+                    droppableReadyStyles
 
-            else if m.draggingProcessState /= Nothing then
-                DropProcess
+                ReadyToReceiveProcess->
+                    droppableReadyStyles
 
-            else
-                Idle
+                _ ->
+                    Css.batch
+                        [ border3 (rem 0.1) dashed (rgb 4 4 4)
+                        , opacity (num 0.25)
+                        ]
+
+        dropMsg =
+            case droppableAreaMode of
+                Normal ->
+                    Idle
+
+                ReadyToReceiveProcessItem ->
+                    DropProcessItem DropInBin
+
+                ReadyToReceiveEmptyItem ->
+                    DropEmptyItem
+
+                ReadyToReceiveProcess ->
+                    DropProcess
     in
     div
         [ css
-            [ border3 (rem 0.1) dashed (rgb 4 4 4)
+            [ droppableStyles
             , margin (rem 0.5)
             , padding (rem 0.25)
             , width (rem 20)
             , height (rem 5)
-            , opacity (num 0.25)
             , hover
                 [ border3 (rem 0.1) solid (rgb 105 0 24)
                 , backgroundColor (rgb 255 211 216)
@@ -456,6 +535,6 @@ viewBin model =
                 ]
             ]
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
-        , on "drop" (Decode.succeed (getDropMsg model))
+        , on "drop" (Decode.succeed dropMsg)
         ]
         [ div [] [ text "🗑️" ] ]
