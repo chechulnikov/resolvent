@@ -1,16 +1,18 @@
 module ProcessDesigner exposing (..)
 
+import Controls
 import Css exposing (..)
 import Html.Styled exposing (..)
 import Html.Styled.Attributes exposing (attribute, css)
 import Html.Styled.Events exposing (..)
 import Json.Decode as Decode
 import List.Extra as List
-import Utils exposing (ifTrueThenUpdate)
+import Utils exposing (boolToString, ifTrueThenUpdate)
 
 
 type Msg
     = Idle
+    | ToggleMode Mode
     | NewProcess Process
     | NewItem Process ProcessItem Int
     | NewItemSlot Process
@@ -97,6 +99,11 @@ type DroppableAreaMode
 
 
 -- UPDATE
+
+
+toggleMode : Mode -> Model -> Model
+toggleMode mode model =
+    { model | mode = mode }
 
 
 addProcess : Process -> Model -> Model
@@ -217,6 +224,13 @@ dragAndDropProcessToBin model =
 
 
 
+-- ATTRS
+
+
+attrDraggable mode =
+    attribute "draggable" (boolToString (mode == Editor))
+
+
 -- VIEW
 
 
@@ -235,6 +249,18 @@ view model =
 
             else
                 Normal
+
+        toggleModeButton =
+            let
+                (label, newMode) =
+                    case model.mode of
+                        Viewer ->
+                            ("Edit", Editor)
+
+                        Editor ->
+                            ("Back to viewer", Viewer)
+            in
+            Controls.viewToggle label newMode ToggleMode ((==) Viewer)
     in
     model.processes
         |> List.map (viewProcess model.mode droppableAreaMode)
@@ -245,6 +271,7 @@ view model =
             else
                 ps
         )
+        |> List.append [ toggleModeButton ]
         |> div
             [ css
                 [ overflowX scroll
@@ -258,11 +285,12 @@ viewProcess mode droppableAreaMode process =
             let
                 items =
                     process.items
+                        |> List.filter ((/=) Nothing >> (||) (mode == Editor))
                         |> List.indexedMap
                             ( \itemIndex item ->
                                 item
-                                    |> Maybe.map (viewProcessItem process)
-                                    |> Maybe.withDefault (viewEmptyItem droppableAreaMode process itemIndex)
+                                    |> Maybe.map (viewProcessItem mode process)
+                                    |> Maybe.withDefault (viewEmptyItem mode droppableAreaMode process itemIndex)
                             )
             in
             if mode == Editor then
@@ -277,19 +305,19 @@ viewProcess mode droppableAreaMode process =
             , before
                 [ width (rem 2)
                 , margin (rem 0.25)
-                , property "background" "repeating-linear-gradient(45deg, #606dbc, #606dbc 10px, #465298 10px, #465298 20px)"
+                , backgroundColor (hex "#606dbc")
                 , property "content" "''"
-                , cursor move
+                , cursor (if mode == Editor then move else default)
                 ]
             ]
         , on "dragstart" (Decode.succeed (DragProcessStart { process = process }))
         , on "dragend" (Decode.succeed DragProcessEnd)
-        , attribute "draggable" "true"
+        , attrDraggable mode
         ]
         viewProcessItems
 
 
-viewProcessItem process processItem =
+viewProcessItem mode process processItem =
     let
         viewName =
             div
@@ -304,7 +332,7 @@ viewProcessItem process processItem =
         itemIndex =
             process.items
                 |> List.elemIndex (Just processItem)
-                |> Maybe.withDefault 0  -- TODO !!!!!!!!!!
+                |> Maybe.withDefault 0  -- unattainable result
     in
     div
         [ css
@@ -328,7 +356,7 @@ viewProcessItem process processItem =
                 , cursor pointer
                 ]
             ]
-        , attribute "draggable" "true"
+        , attrDraggable mode
         , on "dragstart" (Decode.succeed (DragProcessItemStart (DraggingProcessItemState process processItem itemIndex)))
         , on "dragend" (Decode.succeed DragProcessItemEnd)
         , on "drop" (Decode.succeed (DropProcessItem (DropOnAnotherProcessItem process processItem itemIndex)))
@@ -341,7 +369,7 @@ viewProcessItem process processItem =
         ]
 
 
-viewEmptyItem droppableAreaMode process itemIndex =
+viewEmptyItem mode droppableAreaMode process itemIndex =
     let
         newItemName =
             "New item " ++ (String.fromInt (itemIndex + 1))
@@ -386,10 +414,10 @@ viewEmptyItem droppableAreaMode process itemIndex =
             ]
         , onClick (NewItem process { id = newItemName, name = newItemName, description = "" } itemIndex)
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
+        , attrDraggable mode
         , on "drop" (Decode.succeed (DropProcessItem (DropOnEmptySlot process itemIndex)))
         , on "dragstart" (Decode.succeed (DragEmptyItemStart { process = process, itemIndex = itemIndex }))
         , on "dragend" (Decode.succeed DragEmptyItemEnd)
-        , attribute "draggable" "true"
         ]
         [ div [] [ text "EMPTY" ] ]
 
@@ -531,13 +559,6 @@ viewBin droppableAreaMode =
             , padding (rem 0.25)
             , width (vw 25)
             , height (vh 25)
-            --, hover
-            --    [ border3 (rem 0.1) solid (rgb 105 0 24)
-            --    , backgroundColor (rgb 255 211 216)
-            --    , color (rgb 105 0 24)
-            --    , cursor default
-            --    , opacity (num 0.5)
-            --    ]
             ]
         , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
         , on "drop" (Decode.succeed dropMsg)

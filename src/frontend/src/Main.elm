@@ -42,7 +42,7 @@ document model =
 
 init : () -> Url -> Key -> (Model, Cmd msg)
 init _ _ _ =
-    ( ProcessDesignerModel (ProcessDesigner.Model TestData.testProcessDesignerModel Editor Nothing Nothing Nothing)
+    ( ProcessDesignerModel (ProcessDesigner.Model TestData.testProcessDesignerModel Viewer Nothing Nothing Nothing)
     , Cmd.none
     )
 
@@ -85,6 +85,9 @@ update msg model =
             case processEditorMsg of
                 ProcessDesigner.Idle ->
                     (model, Cmd.none)
+                    
+                ProcessDesigner.ToggleMode mode ->
+                    (designer |> toggleMode mode |> ProcessDesignerModel, Cmd.none)
 
                 ProcessDesigner.NewProcess process ->
                     (designer |> addProcess process |> ProcessDesignerModel, Cmd.none)

@@ -14,6 +14,11 @@ ifTrueThenUpdate fn a shouldBeDone =
     else
         a
 
+
+
+-- BOOL
+
+
 boolToMaybe : Bool -> a -> Maybe a
 boolToMaybe bool a =
     if bool then
@@ -21,3 +26,12 @@ boolToMaybe bool a =
 
     else
         Nothing
+
+
+boolToString : Bool -> String
+boolToString bool =
+    if bool then
+        "true"
+
+    else
+        "false"
