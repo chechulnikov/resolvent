@@ -17,7 +17,6 @@ type Msg
     | NewProcess Process Int
     | NewItem Process ProcessItem Int Int
     | NewItemSlot Process
-    | NewSubProcess Process SubProcess
     | DragProcessItemStart DraggingProcessItemState
     | DragProcessItemEnd
     | DropProcessItem DropProcessItemTarget
@@ -42,15 +41,6 @@ type alias Process =
     { id : String
     , name : String
     , items : List (Maybe ProcessItem)
-    , subProcesses : List SubProcess
-    }
-
-
-type alias SubProcess =
-    { id : String
-    , name : String
-    , parent : ProcessItem
-    , items : List ProcessItem
     }
 
 
@@ -127,18 +117,6 @@ addItemToProcess itemIndex item process model =
     let
         update p =
             { p | items = p.items |> List.updateAt itemIndex (\_ -> Just item) }
-
-        updatedProcesses =
-            model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.id == process.id))
-    in
-    { model | processes = updatedProcesses }
-
-
-addSubProcessToProcess : SubProcess -> Process -> Model -> Model
-addSubProcessToProcess subProcess process model =
-    let
-        update p =
-            { p | subProcesses = List.append p.subProcesses [ subProcess ] }
 
         updatedProcesses =
             model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.id == process.id))
@@ -325,6 +303,9 @@ viewProcess mode droppableAreaMode process =
                 , property "content" "''"
                 , cursor (if mode == Editor then move else default)
                 ]
+            , hover
+                [ backgroundColor (rgba 128 128 128 0.05)
+                ]
             ]
         , on "dragstart" (Decode.succeed (DragProcessStart { process = process }))
         , on "dragend" (Decode.succeed DragProcessEnd)
@@ -360,8 +341,9 @@ viewProcessItem mode process processItem =
             , margin (rem 0.5)
             , padding (rem 0.25)
             , minWidth (rem 10)
-            , height (rem 5)
+            , height (rem 3)
             , overflowX hidden
+            , backgroundColor (rgb 255 255 255)
             , hover
                 [ border3 (rem 0.1) solid (rgb 10 124 10)
                 , backgroundColor (rgb 216 255 211)
@@ -415,7 +397,7 @@ viewEmptyItem mode droppableAreaMode process itemIndex =
             , margin (rem 0.5)
             , padding (rem 0.25)
             , minWidth (rem 10)
-            , height (rem 5)
+            , height (rem 3)
             , hover
                 [ border3 (rem 0.1) solid (rgb 15 103 15)
                 , backgroundColor (rgb 216 255 211)
@@ -466,7 +448,7 @@ viewNewSlotButton droppableAreaMode process =
             , margin (rem 0.5)
             , padding (rem 0.25)
             , minWidth (rem 10)
-            , height (rem 5)
+            , height (rem 3)
             , hover
                 [ backgroundColor (rgb 216 255 211)
                 , color (rgb 13 110 13)
@@ -502,7 +484,7 @@ viewAddProcessButton model =
             , margin (rem 0.5)
             , padding (rem 0.25)
             , width (rem 20)
-            , height (rem 5)
+            , height (rem 3)
             , opacity (num 0.25)
             , hover
                 [ border3 (rem 0.1) solid (rgb 15 103 15)
@@ -519,7 +501,7 @@ viewAddProcessButton model =
                 , opacity (num 0.85)
                 ]
             ]
-        , onClick (TempIdRequested (NewProcess (Process newProcessName newProcessName [] [])))
+        , onClick (TempIdRequested (NewProcess (Process newProcessName newProcessName [])))
         ]
         [ div [] [ text "➕" ] ]
 

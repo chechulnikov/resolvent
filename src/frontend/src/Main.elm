@@ -1,7 +1,9 @@
 port module Main exposing (..)
 
+import BoardDesigner
 import Browser
 import Browser.Navigation exposing (Key)
+import Header
 import Html exposing (..)
 import Html.Styled
 import ProcessDesigner exposing (..)
@@ -43,7 +45,10 @@ document model =
 
 init : () -> Url -> Key -> (Model, Cmd msg)
 init _ _ _ =
-    ( ProcessDesignerModel (ProcessDesigner.Model TestData.testProcessDesignerModel Viewer Nothing Nothing Nothing)
+    ( { body =
+        ProcessDesignerModel
+            (ProcessDesigner.Model TestData.testProcessDesignerModel Viewer Nothing Nothing Nothing)
+      }
     , Cmd.none
     )
 
@@ -52,8 +57,14 @@ init _ _ _ =
 -- MODEL
 
 
-type Model
+type alias Model =
+    { body : BodyModel
+    }
+
+
+type BodyModel
     = ProcessDesignerModel ProcessDesigner.Model
+    | BoardDesigner BoardDesigner.Model
 
 
 
@@ -64,7 +75,9 @@ type Msg
   = Idle
   | LinkClicked Browser.UrlRequest
   | UrlChanged Url
-  | ProcessDesignerMsg ProcessDesigner.Msg
+  | HeaderMsg Header.Msg
+  | ProcessDesignerMsg ProcessDesigner.Model ProcessDesigner.Msg
+  | BoardDesignerMsg BoardDesigner.Model BoardDesigner.Msg
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
@@ -79,58 +92,62 @@ update msg model =
         UrlChanged _ ->
             (model, Cmd.none)
 
-        ProcessDesignerMsg processEditorMsg ->
-            let
-                (ProcessDesignerModel designer) = model
-            in
+        HeaderMsg headerMsg ->
+            case headerMsg of
+                Header.Idle ->
+                    (model, Cmd.none)
+
+        ProcessDesignerMsg designerModel processEditorMsg ->
             case processEditorMsg of
                 ProcessDesigner.Idle ->
                     (model, Cmd.none)
 
                 ProcessDesigner.TempIdRequested message ->
-                    (model, Random.generate (message >> ProcessDesignerMsg) (Random.int 10000 100000))
+                    (model, Random.generate (message >> (ProcessDesignerMsg designerModel)) (Random.int 10000 100000))
 
                 ProcessDesigner.ToggleMode mode ->
-                    (designer |> toggleMode mode |> ProcessDesignerModel, Cmd.none)
+                    ({ model | body = designerModel |> toggleMode mode |> ProcessDesignerModel }, Cmd.none)
 
                 ProcessDesigner.NewProcess process tempId ->
-                    (designer |> newProcess tempId process |> ProcessDesignerModel, Cmd.none)
+                    ({ model | body = designerModel |> newProcess tempId process |> ProcessDesignerModel }, Cmd.none)
 
                 ProcessDesigner.NewItem process item itemIndex tempId ->
-                    (designer |> newItemToProcess tempId itemIndex item process |> ProcessDesignerModel, Cmd.none)
+                    ({ model | body = designerModel |> newItemToProcess tempId itemIndex item process |> ProcessDesignerModel }, Cmd.none)
 
                 ProcessDesigner.NewItemSlot process ->
-                    (designer |> addItemSlot process |> ProcessDesignerModel, Cmd.none)
-
-                ProcessDesigner.NewSubProcess process subProcess ->
-                    (designer |> addSubProcessToProcess subProcess process |> ProcessDesignerModel, Cmd.none)
+                    ({ model | body = designerModel |> addItemSlot process |> ProcessDesignerModel }, Cmd.none)
 
                 ProcessDesigner.DragProcessItemStart draggingState ->
-                    (ProcessDesignerModel { designer | draggingProcessItemState = Just draggingState }, Cmd.none)
+                    ({ model | body = ProcessDesignerModel { designerModel | draggingProcessItemState = Just draggingState } }, Cmd.none)
 
                 ProcessDesigner.DragProcessItemEnd ->
-                    (ProcessDesignerModel { designer | draggingProcessItemState = Nothing }, Cmd.none)
+                    ({ model | body = ProcessDesignerModel { designerModel | draggingProcessItemState = Nothing } }, Cmd.none)
 
                 ProcessDesigner.DropProcessItem target ->
-                    (designer |> dropProcessItemOn target |> ProcessDesignerModel, Cmd.none)
+                    ({ model | body = designerModel |> dropProcessItemOn target |> ProcessDesignerModel }, Cmd.none)
 
                 ProcessDesigner.DragEmptyItemStart draggingState ->
-                    (ProcessDesignerModel { designer | draggingEmptyItemState = Just draggingState }, Cmd.none)
+                    ({ model | body = ProcessDesignerModel { designerModel | draggingEmptyItemState = Just draggingState } }, Cmd.none)
 
                 ProcessDesigner.DragEmptyItemEnd ->
-                    (ProcessDesignerModel { designer | draggingEmptyItemState = Nothing }, Cmd.none)
+                    ({ model | body = ProcessDesignerModel { designerModel | draggingEmptyItemState = Nothing } }, Cmd.none)
 
                 ProcessDesigner.DropEmptyItem ->
-                    (designer |> dragAndDropEmptyItemToBin |> ProcessDesignerModel, Cmd.none)
+                    ({ model | body = designerModel |> dragAndDropEmptyItemToBin |> ProcessDesignerModel }, Cmd.none)
 
                 ProcessDesigner.DragProcessStart draggingProcessState ->
-                    (ProcessDesignerModel { designer | draggingProcessState = Just draggingProcessState }, Cmd.none)
+                    ({ model | body = ProcessDesignerModel { designerModel | draggingProcessState = Just draggingProcessState } }, Cmd.none)
 
                 ProcessDesigner.DragProcessEnd ->
-                    (ProcessDesignerModel { designer | draggingProcessState = Nothing }, Cmd.none)
+                    ({ model | body = ProcessDesignerModel { designerModel | draggingProcessState = Nothing } }, Cmd.none)
 
                 ProcessDesigner.DropProcess ->
-                    (designer |> dragAndDropProcessToBin |> ProcessDesignerModel, Cmd.none)
+                    ({ model | body = designerModel |> dragAndDropProcessToBin |> ProcessDesignerModel }, Cmd.none)
+
+        BoardDesignerMsg designerModel boardDesignerMsg ->
+            case boardDesignerMsg of
+                BoardDesigner.Idle ->
+                    (model, Cmd.none)
 
 
 
@@ -148,8 +165,26 @@ subscriptions _ =
 
 view : Model -> Html Msg
 view model =
-    case model of
-         ProcessDesignerModel designerModel ->
-            div []
-                [ ProcessDesigner.view designerModel |> Html.Styled.toUnstyled |> Html.map ProcessDesignerMsg
-                ]
+    let
+        header =
+            Header.view
+                |> Html.Styled.toUnstyled
+                |> Html.map HeaderMsg
+
+        body =
+            case model.body of
+                ProcessDesignerModel designerModel ->
+                    ProcessDesigner.view designerModel
+                        |> Html.Styled.toUnstyled
+                        |> Html.map (ProcessDesignerMsg designerModel)
+
+                BoardDesigner designerModel ->
+                    BoardDesigner.view designerModel
+                        |> Html.Styled.toUnstyled
+                        |> Html.map (BoardDesignerMsg designerModel)
+    in
+    div
+        []
+        [ header
+        , body
+        ]

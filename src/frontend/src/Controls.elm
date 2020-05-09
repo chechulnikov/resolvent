@@ -8,12 +8,6 @@ import Html.Styled.Events exposing (..)
 
 
 
-type ToggleEvent msg
-    = ToggleOn msg Bool
-    | ToggleOff msg Bool
-
-
-
 viewToggle : String -> a -> (a -> msg) -> (a -> Bool) -> Html msg
 viewToggle label data fn checkFn =
     div
