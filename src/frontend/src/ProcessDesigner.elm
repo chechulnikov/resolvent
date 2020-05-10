@@ -7,7 +7,7 @@ import Html.Styled.Attributes exposing (attribute, css)
 import Html.Styled.Events exposing (..)
 import Json.Decode as Decode
 import List.Extra as List
-import Utils exposing (boolToString, ifTrueThenUpdate)
+import Utils exposing (boolToString, updateIfTrue, onStd, onWithoutDef, onWithoutProp)
 
 
 type Msg
@@ -25,6 +25,7 @@ type Msg
     | DropEmptyItem
     | DragProcessStart DraggingProcessState
     | DragProcessEnd
+    | DragTargetOnDraggableArea Bool
     | DropProcess
 
 
@@ -55,17 +56,20 @@ type alias DraggingProcessItemState =
     { process : Process
     , item : ProcessItem
     , itemIndex : Int
+    , hasTargeted : Bool
     }
 
 
 type alias DraggingEmptyItemState =
     { process : Process
     , itemIndex : Int
+    , hasTargeted : Bool
     }
 
 
 type alias DraggingProcessState =
     { process : Process
+    , hasTargeted : Bool
     }
 
 
@@ -119,7 +123,7 @@ addItemToProcess itemIndex item process model =
             { p | items = p.items |> List.updateAt itemIndex (\_ -> Just item) }
 
         updatedProcesses =
-            model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.id == process.id))
+            model.processes |> List.map (\p -> updateIfTrue update p (p.id == process.id))
     in
     { model | processes = updatedProcesses }
 
@@ -132,7 +136,7 @@ removeItemFromProcess itemIndex process model =
 
         updatedProcesses =
             model.processes
-                |> List.map (\p -> ifTrueThenUpdate update p (p.id == process.id))
+                |> List.map (\p -> updateIfTrue update p (p.id == process.id))
     in
     { model | processes = updatedProcesses }
 
@@ -163,7 +167,7 @@ dropProcessItemOn target model =
                             |> addItemToProcess targetItemIndex item targetProcess
             )
         |> Maybe.withDefault model
-        |> (\m -> { m | draggingProcessItemState = Nothing })
+        |> clearDraggingProcessItemState
 
 
 addItemSlot : Process -> Model -> Model
@@ -173,7 +177,7 @@ addItemSlot process model =
             { p | items = List.append p.items [ Nothing ] }
 
         updatedProcesses =
-            model.processes |> List.map (\p -> ifTrueThenUpdate update p (p.id == process.id))
+            model.processes |> List.map (\p -> updateIfTrue update p (p.id == process.id))
     in
     { model | processes = updatedProcesses }
 
@@ -186,17 +190,17 @@ removeEmptySlot itemIndex process model =
 
         updatedProcesses =
             model.processes
-                |> List.map (\p -> ifTrueThenUpdate update p (p.id == process.id))
+                |> List.map (\p -> updateIfTrue update p (p.id == process.id))
     in
     { model | processes = updatedProcesses }
 
 
-dragAndDropEmptyItemToBin : Model -> Model
-dragAndDropEmptyItemToBin model =
+dropEmptyItemToBin : Model -> Model
+dropEmptyItemToBin model =
     model.draggingEmptyItemState
         |> Maybe.map (\{ process, itemIndex } -> removeEmptySlot itemIndex process model)
         |> Maybe.withDefault model
-        |> (\m -> { m | draggingEmptyItemState = Nothing })
+        |> clearDraggingEmptyItemState
 
 
 removeProcess : Process -> Model -> Model
@@ -204,13 +208,72 @@ removeProcess process model =
     { model | processes = model.processes |> List.remove process }
 
 
-dragAndDropProcessToBin : Model -> Model
-dragAndDropProcessToBin model =
+dropProcessToBin : Model -> Model
+dropProcessToBin model =
     model.draggingProcessState
         |> Maybe.map (\{ process } -> removeProcess process model)
         |> Maybe.withDefault model
-        |> (\m -> { m | draggingProcessState = Nothing })
+        |> clearDraggingProcessState
 
+
+setDraggingProcessItemState : DraggingProcessItemState -> Model -> Model
+setDraggingProcessItemState draggingState model =
+    { model | draggingProcessItemState = Just draggingState }
+
+
+hasProcessItemTargeted : Model -> Bool
+hasProcessItemTargeted model =
+    model.draggingProcessItemState
+        |> Maybe.map .hasTargeted
+        |> Maybe.withDefault False
+
+
+clearDraggingProcessItemState : Model -> Model
+clearDraggingProcessItemState model =
+    { model | draggingProcessItemState = Nothing }
+
+
+setDraggingEmptyItemState : DraggingEmptyItemState -> Model -> Model
+setDraggingEmptyItemState draggingState model =
+    { model | draggingEmptyItemState = Just draggingState }
+
+
+hasEmptyItemTargeted : Model -> Bool
+hasEmptyItemTargeted model =
+    model.draggingEmptyItemState
+        |> Maybe.map .hasTargeted
+        |> Maybe.withDefault False
+
+
+clearDraggingEmptyItemState : Model -> Model
+clearDraggingEmptyItemState model =
+    { model | draggingEmptyItemState = Nothing }
+
+
+setDraggingProcessState : DraggingProcessState -> Model -> Model
+setDraggingProcessState draggingState model =
+    { model | draggingProcessState = Just draggingState }
+
+
+hasProcessTargeted : Model -> Bool
+hasProcessTargeted model =
+    model.draggingProcessState
+        |> Maybe.map .hasTargeted
+        |> Maybe.withDefault False
+
+
+clearDraggingProcessState : Model -> Model
+clearDraggingProcessState model =
+    { model | draggingProcessState = Nothing }
+
+
+toggleTargetingOfDraggingState : Bool -> Model -> Model
+toggleTargetingOfDraggingState hasTargeted model =
+    { model
+    | draggingProcessItemState = model.draggingProcessItemState |> Maybe.map (\s -> { s | hasTargeted = hasTargeted})
+    , draggingEmptyItemState = model.draggingEmptyItemState |> Maybe.map (\s -> { s | hasTargeted = hasTargeted})
+    , draggingProcessState = model.draggingProcessState |> Maybe.map (\s -> { s | hasTargeted = hasTargeted})
+    }
 
 
 -- ATTRS
@@ -307,8 +370,8 @@ viewProcess mode droppableAreaMode process =
                 [ backgroundColor (rgba 128 128 128 0.05)
                 ]
             ]
-        , on "dragstart" (Decode.succeed (DragProcessStart { process = process }))
-        , on "dragend" (Decode.succeed DragProcessEnd)
+        , onWithoutProp "dragstart" (DragProcessStart { process = process, hasTargeted = False })
+        , onWithoutProp "dragend" DragProcessEnd
         , attrDraggable mode
         ]
         viewProcessItems
@@ -358,10 +421,12 @@ viewProcessItem mode process processItem =
                 ]
             ]
         , attrDraggable mode
-        , on "dragstart" (Decode.succeed (DragProcessItemStart (DraggingProcessItemState process processItem itemIndex)))
-        , on "dragend" (Decode.succeed DragProcessItemEnd)
-        , on "drop" (Decode.succeed (DropProcessItem (DropOnAnotherProcessItem process processItem itemIndex)))
-        , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
+        , onWithoutProp "dragstart" (DragProcessItemStart (DraggingProcessItemState process processItem itemIndex False))
+        , onWithoutProp "dragend" DragProcessItemEnd
+        , onWithoutProp "dragenter" (DragTargetOnDraggableArea True)
+        , onWithoutProp "dragleave" (DragTargetOnDraggableArea False)
+        , onWithoutProp "drop" (DropProcessItem (DropOnAnotherProcessItem process processItem itemIndex))
+        , onWithoutDef "dragover" Idle
         ]
         [ div
             []
@@ -413,15 +478,16 @@ viewEmptyItem mode droppableAreaMode process itemIndex =
                 , opacity (num 0.85)
                 ]
             ]
-        --, onClick (NewItem process { id = newItemName, name = newItemName, description = "" } itemIndex)
         , onClick (TempIdRequested (NewItem process { id = "", name = newItemName, description = "" } itemIndex))
-        , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
+        , onWithoutDef "dragover" Idle
         , attrDraggable mode
-        , on "drop" (Decode.succeed (DropProcessItem (DropOnEmptySlot process itemIndex)))
-        , on "dragstart" (Decode.succeed (DragEmptyItemStart { process = process, itemIndex = itemIndex }))
-        , on "dragend" (Decode.succeed DragEmptyItemEnd)
+        , onStd "drop" (DropProcessItem (DropOnEmptySlot process itemIndex))
+        , onWithoutProp "dragstart" (DragEmptyItemStart { process = process, itemIndex = itemIndex, hasTargeted = False  })
+        , onWithoutProp "dragend" DragEmptyItemEnd
+        , onStd "dragenter" (DragTargetOnDraggableArea True)
+        , onStd "dragleave" (DragTargetOnDraggableArea False)
         ]
-        [ div [] [ text "EMPTY" ] ]
+        [ text "EMPTY" ]
 
 
 viewNewSlotButton droppableAreaMode process =
@@ -464,10 +530,12 @@ viewNewSlotButton droppableAreaMode process =
                 ]
             ]
         , onClick (NewItemSlot process)
-        , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
-        , on "drop" (Decode.succeed (DropProcessItem (DropOnNewSlot process)))
+        , onWithoutDef "dragover" Idle
+        , onStd "drop" (DropProcessItem (DropOnNewSlot process))
+        , onStd "dragenter" (DragTargetOnDraggableArea True)
+        , onStd "dragleave" (DragTargetOnDraggableArea False)
         ]
-        [ div [] [ text "➕" ] ]
+        [ text "➕" ]
 
 
 viewAddProcessButton model =
@@ -503,7 +571,7 @@ viewAddProcessButton model =
             ]
         , onClick (TempIdRequested (NewProcess (Process newProcessName newProcessName [])))
         ]
-        [ div [] [ text "➕" ] ]
+        [ text "➕" ]
 
 
 viewBin : DroppableAreaMode -> Html Msg
@@ -562,7 +630,9 @@ viewBin droppableAreaMode =
             , width (vw 25)
             , height (vh 25)
             ]
-        , preventDefaultOn "dragover" (Decode.succeed (Idle, True))
-        , on "drop" (Decode.succeed dropMsg)
+        , onWithoutDef "dragover" Idle
+        , onStd "drop" dropMsg
+        , onStd "dragenter" (DragTargetOnDraggableArea True)
+        , onStd "dragleave" (DragTargetOnDraggableArea False)
         ]
-        [ div [] [ text "🗑️" ] ]
+        [ text "🗑️" ]

@@ -10,6 +10,7 @@ import ProcessDesigner exposing (..)
 import Random
 import TestData
 import Url exposing (Url)
+import Utils exposing (boolToMaybe)
 
 
 
@@ -47,7 +48,7 @@ init : () -> Url -> Key -> (Model, Cmd msg)
 init _ _ _ =
     ( { body =
         ProcessDesignerModel
-            (ProcessDesigner.Model TestData.testProcessDesignerModel Viewer Nothing Nothing Nothing)
+            (ProcessDesigner.Model TestData.testProcessDesignerModel Editor Nothing Nothing Nothing)
       }
     , Cmd.none
     )
@@ -82,6 +83,11 @@ type Msg
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
+    let
+        updateBodyModel : (bodyModel -> BodyModel) -> bodyModel -> Model
+        updateBodyModel bodyModelWrapper bodyModel =
+            { model | body = bodyModel |> bodyModelWrapper }
+    in
     case msg of
         Idle ->
             (model, Cmd.none)
@@ -98,6 +104,10 @@ update msg model =
                     (model, Cmd.none)
 
         ProcessDesignerMsg designerModel processEditorMsg ->
+            let
+                updateDesignerModel fn =
+                    designerModel |> fn |> updateBodyModel ProcessDesignerModel
+            in
             case processEditorMsg of
                 ProcessDesigner.Idle ->
                     (model, Cmd.none)
@@ -106,43 +116,61 @@ update msg model =
                     (model, Random.generate (message >> (ProcessDesignerMsg designerModel)) (Random.int 10000 100000))
 
                 ProcessDesigner.ToggleMode mode ->
-                    ({ model | body = designerModel |> toggleMode mode |> ProcessDesignerModel }, Cmd.none)
+                    (toggleMode mode |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.NewProcess process tempId ->
-                    ({ model | body = designerModel |> newProcess tempId process |> ProcessDesignerModel }, Cmd.none)
+                    (newProcess tempId process |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.NewItem process item itemIndex tempId ->
-                    ({ model | body = designerModel |> newItemToProcess tempId itemIndex item process |> ProcessDesignerModel }, Cmd.none)
+                    (newItemToProcess tempId itemIndex item process |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.NewItemSlot process ->
-                    ({ model | body = designerModel |> addItemSlot process |> ProcessDesignerModel }, Cmd.none)
+                    (addItemSlot process |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragProcessItemStart draggingState ->
-                    ({ model | body = ProcessDesignerModel { designerModel | draggingProcessItemState = Just draggingState } }, Cmd.none)
+                    (setDraggingProcessItemState draggingState |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragProcessItemEnd ->
-                    ({ model | body = ProcessDesignerModel { designerModel | draggingProcessItemState = Nothing } }, Cmd.none)
+                    ( designerModel
+                        |> hasProcessItemTargeted
+                        |> boolToMaybe model
+                        |> Maybe.withDefault (updateDesignerModel clearDraggingProcessItemState)
+                    , Cmd.none
+                    )
 
                 ProcessDesigner.DropProcessItem target ->
-                    ({ model | body = designerModel |> dropProcessItemOn target |> ProcessDesignerModel }, Cmd.none)
+                    (dropProcessItemOn target |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragEmptyItemStart draggingState ->
-                    ({ model | body = ProcessDesignerModel { designerModel | draggingEmptyItemState = Just draggingState } }, Cmd.none)
+                    (setDraggingEmptyItemState draggingState |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragEmptyItemEnd ->
-                    ({ model | body = ProcessDesignerModel { designerModel | draggingEmptyItemState = Nothing } }, Cmd.none)
+                    ( designerModel
+                        |> hasEmptyItemTargeted
+                        |> boolToMaybe model
+                        |> Maybe.withDefault (updateDesignerModel clearDraggingEmptyItemState)
+                    , Cmd.none
+                    )
 
                 ProcessDesigner.DropEmptyItem ->
-                    ({ model | body = designerModel |> dragAndDropEmptyItemToBin |> ProcessDesignerModel }, Cmd.none)
+                    (dropEmptyItemToBin |> updateDesignerModel, Cmd.none)
 
-                ProcessDesigner.DragProcessStart draggingProcessState ->
-                    ({ model | body = ProcessDesignerModel { designerModel | draggingProcessState = Just draggingProcessState } }, Cmd.none)
+                ProcessDesigner.DragProcessStart draggingState ->
+                    (setDraggingProcessState draggingState |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragProcessEnd ->
-                    ({ model | body = ProcessDesignerModel { designerModel | draggingProcessState = Nothing } }, Cmd.none)
+                    ( designerModel
+                        |> hasProcessTargeted
+                        |> boolToMaybe model
+                        |> Maybe.withDefault (updateDesignerModel clearDraggingProcessState)
+                    , Cmd.none
+                    )
 
                 ProcessDesigner.DropProcess ->
-                    ({ model | body = designerModel |> dragAndDropProcessToBin |> ProcessDesignerModel }, Cmd.none)
+                    (dropProcessToBin |> updateDesignerModel, Cmd.none)
+
+                ProcessDesigner.DragTargetOnDraggableArea hasTargeted ->
+                    (toggleTargetingOfDraggingState hasTargeted |> updateDesignerModel, Cmd.none)
 
         BoardDesignerMsg designerModel boardDesignerMsg ->
             case boardDesignerMsg of
@@ -171,8 +199,8 @@ view model =
                 |> Html.Styled.toUnstyled
                 |> Html.map HeaderMsg
 
-        body =
-            case model.body of
+        body m =
+            case m of
                 ProcessDesignerModel designerModel ->
                     ProcessDesigner.view designerModel
                         |> Html.Styled.toUnstyled
@@ -186,5 +214,5 @@ view model =
     div
         []
         [ header
-        , body
+        , body model.body
         ]

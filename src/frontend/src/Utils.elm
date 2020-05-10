@@ -1,13 +1,16 @@
 module Utils exposing (..)
 
 
+import Html.Styled exposing (Attribute)
+import Html.Styled.Events exposing (on, preventDefaultOn, stopPropagationOn)
+import Json.Decode as Decode
 flip : (a -> b -> c) -> (b -> a -> c)
 flip function b a =
     function a b
 
 
-ifTrueThenUpdate : (a -> a) -> a -> Bool -> a
-ifTrueThenUpdate fn a shouldBeDone =
+updateIfTrue : (a -> a) -> a -> Bool -> a
+updateIfTrue fn a shouldBeDone =
     if shouldBeDone then
         fn a
 
@@ -19,8 +22,8 @@ ifTrueThenUpdate fn a shouldBeDone =
 -- BOOL
 
 
-boolToMaybe : Bool -> a -> Maybe a
-boolToMaybe bool a =
+boolToMaybe : a -> Bool -> Maybe a
+boolToMaybe a bool =
     if bool then
         Just a
 
@@ -35,3 +38,20 @@ boolToString bool =
 
     else
         "false"
+
+
+
+-- HTML EVENTS
+
+
+onStd : String -> msg -> Attribute msg
+onStd eventName msg =
+    on eventName (Decode.succeed msg)
+
+onWithoutProp : String -> msg -> Attribute msg
+onWithoutProp eventName msg =
+    stopPropagationOn eventName (Decode.succeed (msg, True))
+
+onWithoutDef : String -> msg -> Attribute msg
+onWithoutDef eventName msg =
+    preventDefaultOn eventName (Decode.succeed (msg, True))

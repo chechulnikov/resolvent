@@ -13,7 +13,6 @@ testProcessDesignerModel =
           , ProcessDesigner.ProcessItem "4" "Specification" "Specify every feature" |> Just
           , ProcessDesigner.ProcessItem "5" "Specification review" "Review of specification" |> Just
           ]
-      --, subProcesses = []
       }
     ,  { id = "2"
        , name = "Hotfix process"
@@ -22,6 +21,5 @@ testProcessDesignerModel =
             , ProcessDesigner.ProcessItem "2" "In progress" "" |> Just
             , ProcessDesigner.ProcessItem "3" "Done" "" |> Just
             ]
-       --, subProcesses = []
        }
     ]
