@@ -5,7 +5,6 @@ import Css exposing (..)
 import Html.Styled exposing (..)
 import Html.Styled.Attributes exposing (attribute, css)
 import Html.Styled.Events exposing (..)
-import Json.Decode as Decode
 import List.Extra as List
 import Utils exposing (boolToString, updateIfTrue, onStd, onWithoutDef, onWithoutProp)
 
@@ -17,24 +16,16 @@ type Msg
     | NewProcess Process Int
     | NewItem Process ProcessItem Int Int
     | NewItemSlot Process
-    | DragProcessItemStart DraggingProcessItemState
-    | DragProcessItemEnd
-    | DropProcessItem DropProcessItemTarget
-    | DragEmptyItemStart DraggingEmptyItemState
-    | DragEmptyItemEnd
-    | DropEmptyItem
-    | DragProcessStart DraggingProcessState
-    | DragProcessEnd
+    | DragStart DraggingState
+    | DragEnd
+    | Drop DropProcessItemTarget
     | DragTargetOnDraggableArea Bool
-    | DropProcess
 
 
 type alias Model =
     { processes : List Process
     , mode : Mode
-    , draggingProcessItemState : Maybe DraggingProcessItemState
-    , draggingEmptyItemState : Maybe DraggingEmptyItemState
-    , draggingProcessState : Maybe DraggingProcessState
+    , draggingState : Maybe { state : DraggingState, hasTargeted : Bool}
     }
 
 
@@ -52,25 +43,19 @@ type alias ProcessItem =
     }
 
 
-type alias DraggingProcessItemState =
-    { process : Process
-    , item : ProcessItem
-    , itemIndex : Int
-    , hasTargeted : Bool
-    }
-
-
-type alias DraggingEmptyItemState =
-    { process : Process
-    , itemIndex : Int
-    , hasTargeted : Bool
-    }
-
-
-type alias DraggingProcessState =
-    { process : Process
-    , hasTargeted : Bool
-    }
+type DraggingState
+    = DraggingProcessItemState
+        { process : Process
+        , item : ProcessItem
+        , itemIndex : Int
+        }
+    | DraggingEmptyItemState
+        { process : Process
+        , itemIndex : Int
+        }
+    | DraggingProcessState
+        { process : Process
+        }
 
 
 type Mode
@@ -141,33 +126,41 @@ removeItemFromProcess itemIndex process model =
     { model | processes = updatedProcesses }
 
 
-dropProcessItemOn : DropProcessItemTarget -> Model -> Model
-dropProcessItemOn target model =
-    model.draggingProcessItemState
+dropOn : DropProcessItemTarget -> Model -> Model
+dropOn target model =
+    model.draggingState
         |> Maybe.map
-            (\{ process, item, itemIndex } ->
-                case target of
-                    DropOnNewSlot targetProcess ->
-                        model
-                            |> addItemSlot targetProcess
-                            |> addItemToProcess (List.length targetProcess.items) item targetProcess
-                            |> removeItemFromProcess itemIndex process
+            (\{ state } ->
+                case state of
+                    DraggingProcessItemState { process, item, itemIndex } ->
+                        case target of
+                            DropOnNewSlot targetProcess ->
+                                model
+                                    |> addItemSlot targetProcess
+                                    |> addItemToProcess (List.length targetProcess.items) item targetProcess
+                                    |> removeItemFromProcess itemIndex process
 
-                    DropInBin ->
-                        removeItemFromProcess itemIndex process model
+                            DropInBin ->
+                                removeItemFromProcess itemIndex process model
 
-                    DropOnEmptySlot targetProcess targetItemIndex ->
-                        model
-                            |> addItemToProcess targetItemIndex item targetProcess
-                            |> removeItemFromProcess itemIndex process
+                            DropOnEmptySlot targetProcess targetItemIndex ->
+                                model
+                                    |> addItemToProcess targetItemIndex item targetProcess
+                                    |> removeItemFromProcess itemIndex process
 
-                    DropOnAnotherProcessItem targetProcess targetItem targetItemIndex ->
-                        model
-                            |> addItemToProcess itemIndex targetItem process
-                            |> addItemToProcess targetItemIndex item targetProcess
+                            DropOnAnotherProcessItem targetProcess targetItem targetItemIndex ->
+                                model
+                                    |> addItemToProcess itemIndex targetItem process
+                                    |> addItemToProcess targetItemIndex item targetProcess
+
+                    DraggingEmptyItemState { process, itemIndex } ->
+                        removeEmptySlot itemIndex process model
+
+                    DraggingProcessState { process } ->
+                        removeProcess process model
             )
         |> Maybe.withDefault model
-        |> clearDraggingProcessItemState
+        |> clearDraggingState
 
 
 addItemSlot : Process -> Model -> Model
@@ -195,85 +188,31 @@ removeEmptySlot itemIndex process model =
     { model | processes = updatedProcesses }
 
 
-dropEmptyItemToBin : Model -> Model
-dropEmptyItemToBin model =
-    model.draggingEmptyItemState
-        |> Maybe.map (\{ process, itemIndex } -> removeEmptySlot itemIndex process model)
-        |> Maybe.withDefault model
-        |> clearDraggingEmptyItemState
-
-
 removeProcess : Process -> Model -> Model
 removeProcess process model =
     { model | processes = model.processes |> List.remove process }
 
 
-dropProcessToBin : Model -> Model
-dropProcessToBin model =
-    model.draggingProcessState
-        |> Maybe.map (\{ process } -> removeProcess process model)
-        |> Maybe.withDefault model
-        |> clearDraggingProcessState
+setDraggingState : DraggingState -> Model -> Model
+setDraggingState draggingState model =
+    { model | draggingState = Just { state = draggingState, hasTargeted = False } }
 
 
-setDraggingProcessItemState : DraggingProcessItemState -> Model -> Model
-setDraggingProcessItemState draggingState model =
-    { model | draggingProcessItemState = Just draggingState }
-
-
-hasProcessItemTargeted : Model -> Bool
-hasProcessItemTargeted model =
-    model.draggingProcessItemState
+hasDragTargeted : Model -> Bool
+hasDragTargeted model =
+    model.draggingState
         |> Maybe.map .hasTargeted
         |> Maybe.withDefault False
 
 
-clearDraggingProcessItemState : Model -> Model
-clearDraggingProcessItemState model =
-    { model | draggingProcessItemState = Nothing }
-
-
-setDraggingEmptyItemState : DraggingEmptyItemState -> Model -> Model
-setDraggingEmptyItemState draggingState model =
-    { model | draggingEmptyItemState = Just draggingState }
-
-
-hasEmptyItemTargeted : Model -> Bool
-hasEmptyItemTargeted model =
-    model.draggingEmptyItemState
-        |> Maybe.map .hasTargeted
-        |> Maybe.withDefault False
-
-
-clearDraggingEmptyItemState : Model -> Model
-clearDraggingEmptyItemState model =
-    { model | draggingEmptyItemState = Nothing }
-
-
-setDraggingProcessState : DraggingProcessState -> Model -> Model
-setDraggingProcessState draggingState model =
-    { model | draggingProcessState = Just draggingState }
-
-
-hasProcessTargeted : Model -> Bool
-hasProcessTargeted model =
-    model.draggingProcessState
-        |> Maybe.map .hasTargeted
-        |> Maybe.withDefault False
-
-
-clearDraggingProcessState : Model -> Model
-clearDraggingProcessState model =
-    { model | draggingProcessState = Nothing }
+clearDraggingState : Model -> Model
+clearDraggingState model =
+    { model | draggingState = Nothing }
 
 
 toggleTargetingOfDraggingState : Bool -> Model -> Model
 toggleTargetingOfDraggingState hasTargeted model =
-    { model
-    | draggingProcessItemState = model.draggingProcessItemState |> Maybe.map (\s -> { s | hasTargeted = hasTargeted})
-    , draggingEmptyItemState = model.draggingEmptyItemState |> Maybe.map (\s -> { s | hasTargeted = hasTargeted})
-    , draggingProcessState = model.draggingProcessState |> Maybe.map (\s -> { s | hasTargeted = hasTargeted})
-    }
+    { model | draggingState = model.draggingState |> Maybe.map (\s -> { s | hasTargeted = hasTargeted}) }
 
 
 -- ATTRS
@@ -294,17 +233,19 @@ view : Model -> Html Msg
 view model =
     let
         droppableAreaMode =
-            if model.draggingProcessItemState /= Nothing then
-                ReadyToReceiveProcessItem
+            case model.draggingState of
+                Just { state } ->
+                    case state of
+                        DraggingProcessItemState _ ->
+                            ReadyToReceiveProcessItem
 
-            else if model.draggingEmptyItemState /= Nothing then
-                ReadyToReceiveEmptyItem
+                        DraggingEmptyItemState _ ->
+                            ReadyToReceiveEmptyItem
 
-            else if model.draggingProcessState /= Nothing then
-                ReadyToReceiveProcess
-
-            else
-                Normal
+                        DraggingProcessState _ ->
+                            ReadyToReceiveProcess
+                Nothing ->
+                    Normal
 
         toggleModeButton =
             let
@@ -370,8 +311,8 @@ viewProcess mode droppableAreaMode process =
                 [ backgroundColor (rgba 128 128 128 0.05)
                 ]
             ]
-        , onWithoutProp "dragstart" (DragProcessStart { process = process, hasTargeted = False })
-        , onWithoutProp "dragend" DragProcessEnd
+        , onWithoutProp "dragstart" (DragStart (DraggingProcessState { process = process }))
+        , onWithoutProp "dragend" DragEnd
         , attrDraggable mode
         ]
         viewProcessItems
@@ -421,11 +362,11 @@ viewProcessItem mode process processItem =
                 ]
             ]
         , attrDraggable mode
-        , onWithoutProp "dragstart" (DragProcessItemStart (DraggingProcessItemState process processItem itemIndex False))
-        , onWithoutProp "dragend" DragProcessItemEnd
+        , onWithoutProp "dragstart" (DragStart (DraggingProcessItemState { process = process, item = processItem, itemIndex = itemIndex }))
+        , onWithoutProp "dragend" DragEnd
         , onWithoutProp "dragenter" (DragTargetOnDraggableArea True)
         , onWithoutProp "dragleave" (DragTargetOnDraggableArea False)
-        , onWithoutProp "drop" (DropProcessItem (DropOnAnotherProcessItem process processItem itemIndex))
+        , onWithoutProp "drop" (Drop (DropOnAnotherProcessItem process processItem itemIndex))
         , onWithoutDef "dragover" Idle
         ]
         [ div
@@ -481,9 +422,9 @@ viewEmptyItem mode droppableAreaMode process itemIndex =
         , onClick (TempIdRequested (NewItem process { id = "", name = newItemName, description = "" } itemIndex))
         , onWithoutDef "dragover" Idle
         , attrDraggable mode
-        , onStd "drop" (DropProcessItem (DropOnEmptySlot process itemIndex))
-        , onWithoutProp "dragstart" (DragEmptyItemStart { process = process, itemIndex = itemIndex, hasTargeted = False  })
-        , onWithoutProp "dragend" DragEmptyItemEnd
+        , onStd "drop" (Drop (DropOnEmptySlot process itemIndex))
+        , onWithoutProp "dragstart" (DragStart (DraggingEmptyItemState { process = process, itemIndex = itemIndex }))
+        , onWithoutProp "dragend" DragEnd
         , onStd "dragenter" (DragTargetOnDraggableArea True)
         , onStd "dragleave" (DragTargetOnDraggableArea False)
         ]
@@ -531,7 +472,7 @@ viewNewSlotButton droppableAreaMode process =
             ]
         , onClick (NewItemSlot process)
         , onWithoutDef "dragover" Idle
-        , onStd "drop" (DropProcessItem (DropOnNewSlot process))
+        , onStd "drop" (Drop (DropOnNewSlot process))
         , onStd "dragenter" (DragTargetOnDraggableArea True)
         , onStd "dragleave" (DragTargetOnDraggableArea False)
         ]
@@ -610,14 +551,8 @@ viewBin droppableAreaMode =
                 Normal ->
                     Idle
 
-                ReadyToReceiveProcessItem ->
-                    DropProcessItem DropInBin
-
-                ReadyToReceiveEmptyItem ->
-                    DropEmptyItem
-
-                ReadyToReceiveProcess ->
-                    DropProcess
+                _ ->
+                    Drop DropInBin
     in
     div
         [ css

@@ -48,7 +48,7 @@ init : () -> Url -> Key -> (Model, Cmd msg)
 init _ _ _ =
     ( { body =
         ProcessDesignerModel
-            (ProcessDesigner.Model TestData.testProcessDesignerModel Editor Nothing Nothing Nothing)
+            (ProcessDesigner.Model TestData.testProcessDesignerModel Editor Nothing)
       }
     , Cmd.none
     )
@@ -127,47 +127,19 @@ update msg model =
                 ProcessDesigner.NewItemSlot process ->
                     (addItemSlot process |> updateDesignerModel, Cmd.none)
 
-                ProcessDesigner.DragProcessItemStart draggingState ->
-                    (setDraggingProcessItemState draggingState |> updateDesignerModel, Cmd.none)
+                ProcessDesigner.DragStart draggingState ->
+                    (setDraggingState draggingState |> updateDesignerModel, Cmd.none)
 
-                ProcessDesigner.DragProcessItemEnd ->
+                ProcessDesigner.DragEnd ->
                     ( designerModel
-                        |> hasProcessItemTargeted
+                        |> hasDragTargeted
                         |> boolToMaybe model
-                        |> Maybe.withDefault (updateDesignerModel clearDraggingProcessItemState)
+                        |> Maybe.withDefault (updateDesignerModel clearDraggingState)
                     , Cmd.none
                     )
 
-                ProcessDesigner.DropProcessItem target ->
-                    (dropProcessItemOn target |> updateDesignerModel, Cmd.none)
-
-                ProcessDesigner.DragEmptyItemStart draggingState ->
-                    (setDraggingEmptyItemState draggingState |> updateDesignerModel, Cmd.none)
-
-                ProcessDesigner.DragEmptyItemEnd ->
-                    ( designerModel
-                        |> hasEmptyItemTargeted
-                        |> boolToMaybe model
-                        |> Maybe.withDefault (updateDesignerModel clearDraggingEmptyItemState)
-                    , Cmd.none
-                    )
-
-                ProcessDesigner.DropEmptyItem ->
-                    (dropEmptyItemToBin |> updateDesignerModel, Cmd.none)
-
-                ProcessDesigner.DragProcessStart draggingState ->
-                    (setDraggingProcessState draggingState |> updateDesignerModel, Cmd.none)
-
-                ProcessDesigner.DragProcessEnd ->
-                    ( designerModel
-                        |> hasProcessTargeted
-                        |> boolToMaybe model
-                        |> Maybe.withDefault (updateDesignerModel clearDraggingProcessState)
-                    , Cmd.none
-                    )
-
-                ProcessDesigner.DropProcess ->
-                    (dropProcessToBin |> updateDesignerModel, Cmd.none)
+                ProcessDesigner.Drop target ->
+                    (dropOn target |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragTargetOnDraggableArea hasTargeted ->
                     (toggleTargetingOfDraggingState hasTargeted |> updateDesignerModel, Cmd.none)
