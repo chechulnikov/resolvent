@@ -48,7 +48,11 @@ init : () -> Url -> Key -> (Model, Cmd msg)
 init _ _ _ =
     ( { body =
         ProcessDesignerModel
-            (ProcessDesigner.Model TestData.testProcessDesignerModel Editor Nothing)
+            { processes = TestData.testProcessDesignerProcesses  -- TODO !!!!!! TEST DATA !!!!!!
+            , subWorkflow = Nothing
+            , mode = EditorMode
+            , draggingState = Nothing
+            }
       }
     , Cmd.none
     )
@@ -118,14 +122,17 @@ update msg model =
                 ProcessDesigner.ToggleMode mode ->
                     (toggleMode mode |> updateDesignerModel, Cmd.none)
 
-                ProcessDesigner.NewProcess process tempId ->
-                    (newProcess tempId process |> updateDesignerModel, Cmd.none)
+                ProcessDesigner.NewProcess workflowKind process tempId ->
+                    let updateFn = newProcess tempId process in
+                    (updateWorkflow workflowKind updateFn updateFn |> updateDesignerModel, Cmd.none)
 
-                ProcessDesigner.NewItem process item itemIndex tempId ->
-                    (newItemToProcess tempId itemIndex item process |> updateDesignerModel, Cmd.none)
+                ProcessDesigner.NewItem workflowKind process item itemIndex tempId ->
+                    let updateFn = newItemToProcess tempId itemIndex item process in
+                    (updateWorkflow workflowKind updateFn updateFn |> updateDesignerModel, Cmd.none)
 
-                ProcessDesigner.NewItemSlot process ->
-                    (addItemSlot process |> updateDesignerModel, Cmd.none)
+                ProcessDesigner.NewItemSlot workflowKind process ->
+                    let updateFn = addItemSlot process in
+                    (updateWorkflow workflowKind updateFn updateFn |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragStart draggingState ->
                     (setDraggingState draggingState |> updateDesignerModel, Cmd.none)
@@ -143,6 +150,10 @@ update msg model =
 
                 ProcessDesigner.DragTargetOnDraggableArea hasTargeted ->
                     (toggleTargetingOfDraggingState hasTargeted |> updateDesignerModel, Cmd.none)
+
+                ProcessDesigner.ToggleProcessItemSelection process processItem ->
+                    -- TODO !!!!!! TEST DATA !!!!!!
+                    (toggleSubProcess process processItem TestData.testSubProcesses |> updateDesignerModel, Cmd.none)
 
         BoardDesignerMsg designerModel boardDesignerMsg ->
             case boardDesignerMsg of

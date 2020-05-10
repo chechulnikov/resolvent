@@ -4,9 +4,7 @@ module Utils exposing (..)
 import Html.Styled exposing (Attribute)
 import Html.Styled.Events exposing (on, preventDefaultOn, stopPropagationOn)
 import Json.Decode as Decode
-flip : (a -> b -> c) -> (b -> a -> c)
-flip function b a =
-    function a b
+
 
 
 updateIfTrue : (a -> a) -> a -> Bool -> a
