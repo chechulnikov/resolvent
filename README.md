@@ -1,5 +1,17 @@
-# Elm Skeleton
-Empty Elm project with useful scripts
+# Resolvent
+Business process tracker and organizer
+
+# Roadmap for MVP
+- [x] Process designer
+- [ ] Board designer
+- [ ] Board
+- [ ] Calendar
+- [ ] Routines
+- [ ] Cycles
+- [ ] Header
+- [ ] Authentication & authorization
+- [ ] Assemble all parts into app
+- [ ] Backend
 
 ## How to run locally
 ### Docker way
