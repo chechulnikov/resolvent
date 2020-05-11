@@ -18,7 +18,7 @@ type Msg
     | NewItemSlot WorkflowKind Process
     | DragStart DraggingState
     | DragEnd
-    | Drop DropProcessItemTarget
+    | Drop WorkflowKind DropProcessItemTarget
     | DragTargetOnDraggableArea Bool
     | ToggleProcessItemSelection Process ProcessItem
 
@@ -58,16 +58,19 @@ type alias ProcessItem =
 
 type DraggingState
     = DraggingProcessItemState
-        { process : Process
+        { workflowKind : WorkflowKind
+        , process : Process
         , item : ProcessItem
         , itemIndex : Int
         }
     | DraggingEmptyItemState
-        { process : Process
+        { workflowKind : WorkflowKind
+        , process : Process
         , itemIndex : Int
         }
     | DraggingProcessState
-        { process : Process
+        { workflowKind : WorkflowKind
+        , process : Process
         }
 
 
@@ -95,6 +98,11 @@ type WorkflowKind
     | SubWorkflow
 
 
+type ProcessItemState
+    = NormalProcessItemState
+    | ActiveProcessItemState
+
+
 
 -- UPDATE
 
@@ -108,11 +116,9 @@ updateWorkflow : WorkflowKind -> (Model-> Model) -> (SubWorkflowData -> SubWorkf
 updateWorkflow workflowType updateMainWorkflow updateSecondaryWorkflow model =
     case workflowType of
         MainWorkflow ->
-            let _ = Debug.log "update main workflow" {} in
             updateMainWorkflow model
 
         SubWorkflow ->
-            let _ = Debug.log "update sub workflow" {} in
             { model | subWorkflow = model.subWorkflow |> Maybe.map updateSecondaryWorkflow }
 
 
@@ -143,54 +149,53 @@ addItemToProcess itemIndex item process workflow =
     { workflow | processes = updatedProcesses }
 
 
-removeItemFromProcess : Int -> Process -> Model -> Model
-removeItemFromProcess itemIndex process model =
+removeItemFromProcess : Int -> Process -> Workflow a -> Workflow a
+removeItemFromProcess itemIndex process workflow =
     let
         update p =
             { p | items = p.items |> List.updateAt itemIndex (\_ -> Nothing) }
 
         updatedProcesses =
-            model.processes
+            workflow.processes
                 |> List.map (\p -> updateIfTrue update p (p.id == process.id))
     in
-    { model | processes = updatedProcesses }
+    { workflow | processes = updatedProcesses }
 
 
-dropOn : DropProcessItemTarget -> Model -> Model
-dropOn target model =
+dropOn : DropProcessItemTarget -> Model -> Workflow a -> Workflow a
+dropOn target model workflow =
     model.draggingState
         |> Maybe.map
             (\{ state } ->
                 case state of
-                    DraggingProcessItemState { process, item, itemIndex } ->
+                    DraggingProcessItemState { workflowKind, process, item, itemIndex } ->
                         case target of
                             DropOnNewSlot targetProcess ->
-                                model
+                                workflow
                                     |> addItemSlot targetProcess
                                     |> addItemToProcess (List.length targetProcess.items) item targetProcess
                                     |> removeItemFromProcess itemIndex process
 
                             DropInBin ->
-                                removeItemFromProcess itemIndex process model
+                                removeItemFromProcess itemIndex process workflow
 
                             DropOnEmptySlot targetProcess targetItemIndex ->
-                                model
+                                workflow
                                     |> addItemToProcess targetItemIndex item targetProcess
                                     |> removeItemFromProcess itemIndex process
 
                             DropOnAnotherProcessItem targetProcess targetItem targetItemIndex ->
-                                model
+                                workflow
                                     |> addItemToProcess itemIndex targetItem process
                                     |> addItemToProcess targetItemIndex item targetProcess
 
                     DraggingEmptyItemState { process, itemIndex } ->
-                        removeEmptySlot itemIndex process model
+                        removeEmptySlot itemIndex process workflow
 
                     DraggingProcessState { process } ->
-                        removeProcess process model
+                        removeProcess process workflow
             )
-        |> Maybe.withDefault model
-        |> clearDraggingState
+        |> Maybe.withDefault workflow
 
 
 addItemSlot : Process -> Workflow a -> Workflow a
@@ -205,22 +210,22 @@ addItemSlot process workflow =
     { workflow | processes = updatedProcesses }
 
 
-removeEmptySlot : Int -> Process -> Model -> Model
-removeEmptySlot itemIndex process model =
+removeEmptySlot : Int -> Process -> Workflow a -> Workflow a
+removeEmptySlot itemIndex process workflow =
     let
         update p =
             { p | items = p.items |> List.removeAt itemIndex }
 
         updatedProcesses =
-            model.processes
+            workflow.processes
                 |> List.map (\p -> updateIfTrue update p (p.id == process.id))
     in
-    { model | processes = updatedProcesses }
+    { workflow | processes = updatedProcesses }
 
 
-removeProcess : Process -> Model -> Model
-removeProcess process model =
-    { model | processes = model.processes |> List.remove process }
+removeProcess : Process -> Workflow a -> Workflow a
+removeProcess process workflow =
+    { workflow | processes = workflow.processes |> List.remove process }
 
 
 setDraggingState : DraggingState -> Model -> Model
@@ -245,18 +250,18 @@ toggleTargetingOfDraggingState hasTargeted model =
     { model | draggingState = model.draggingState |> Maybe.map (\s -> { s | hasTargeted = hasTargeted}) }
 
 
-toggleSubProcess : Process -> ProcessItem -> List Process -> Model -> Model
-toggleSubProcess parentProcess parentProcessItem processes model =
+toggleSubWorkflow : Process -> ProcessItem -> List Process -> Model -> Model
+toggleSubWorkflow parentProcess parentProcessItem subProcesses model =
     model.subWorkflow
-        |> Maybe.map (.parentProcessItem >> (==) parentProcessItem)
-        |> Maybe.map (always { model | subWorkflow = Nothing })
+        |> Maybe.andThen
+            (\w -> boolToMaybe { model | subWorkflow = Nothing } (w.parentProcessItem == parentProcessItem))
         |> Maybe.withDefault
             { model
             | subWorkflow =
                 Just
                     { parentProcessItem = parentProcessItem
                     , parentProcess = parentProcess
-                    , processes = processes
+                    , processes = subProcesses
                     }
             }
 
@@ -309,6 +314,10 @@ view model =
             in
             Controls.viewToggle label newMode ToggleMode ((==) ViewerMode)
 
+        activeProcessItem =
+            model.subWorkflow
+                |> Maybe.map .parentProcessItem
+
         addWorkflowControls workflowKind workflow ps =
             mode == EditorMode
                 |> boolToMaybe
@@ -316,7 +325,7 @@ view model =
                         ps
                         [ div
                             [ css [ displayFlex ] ]
-                            [ viewAddProcessButton workflowKind workflow.processes, viewBin droppableAreaMode ]
+                            [ viewAddProcessButton workflowKind workflow.processes ]
                         ]
                     )
                 |> Maybe.withDefault ps
@@ -324,7 +333,7 @@ view model =
         viewMainWorkflow =
             model.processes
                 |> List.filter isUsefulProcess
-                |> List.map (viewProcess MainWorkflow mode droppableAreaMode)
+                |> List.map (viewProcess MainWorkflow mode droppableAreaMode activeProcessItem)
                 |> addWorkflowControls MainWorkflow model
                 |> List.append [ toggleModeButton ]
                 |> div
@@ -337,7 +346,7 @@ view model =
 
         viewSubWorkflow workflow =
             workflow.processes
-                |> List.map (viewProcess SubWorkflow mode droppableAreaMode)
+                |> List.map (viewProcess SubWorkflow mode droppableAreaMode activeProcessItem)
                 |> addWorkflowControls SubWorkflow workflow
                 |> div
                     [ css
@@ -353,6 +362,23 @@ view model =
         isUsefulProcess p =
             (model.mode == EditorMode)
             || ((model.mode == ViewerMode) && (p.items /= [] && List.any ((/=) Nothing) p.items))
+
+        binWorkflow =
+            model.draggingState
+                |> Maybe.map .state
+                |> Maybe.map
+                    ( \state ->
+                        case state of
+                            DraggingProcessItemState { workflowKind } ->
+                                workflowKind
+
+                            DraggingEmptyItemState { workflowKind } ->
+                                workflowKind
+
+                            DraggingProcessState { workflowKind } ->
+                                workflowKind
+                    )
+                |> Maybe.withDefault MainWorkflow
     in
     div
         []
@@ -360,11 +386,17 @@ view model =
         , model.subWorkflow
             |> Maybe.map viewSubWorkflow
             |> Maybe.withDefault (text "")
+        , viewBin binWorkflow droppableAreaMode
         ]
 
-
-viewProcess workflowKind mode droppableAreaMode process =
+viewProcess : WorkflowKind -> Mode -> DroppableAreaMode -> Maybe ProcessItem -> Process -> Html Msg
+viewProcess workflowKind mode droppableAreaMode activeProcessItem process =
     let
+        getProcessItemState i =
+            activeProcessItem
+                |> Maybe.andThen (\x -> boolToMaybe ActiveProcessItemState (x == i))
+                |> Maybe.withDefault NormalProcessItemState
+
         viewProcessItems  =
             let
                 items =
@@ -373,7 +405,7 @@ viewProcess workflowKind mode droppableAreaMode process =
                         |> List.indexedMap
                             ( \itemIndex item ->
                                 item
-                                    |> Maybe.map (viewProcessItem mode process)
+                                    |> Maybe.map (\i -> viewProcessItem workflowKind (getProcessItemState i) mode process i)
                                     |> Maybe.withDefault (viewEmptyItem workflowKind mode droppableAreaMode process itemIndex)
                             )
             in
@@ -392,20 +424,20 @@ viewProcess workflowKind mode droppableAreaMode process =
                 , margin (rem 0.25)
                 , backgroundColor (hex "#606dbc")
                 , property "content" "''"
-                , cursor (if mode == EditorMode then move else default)
                 ]
             , hover
                 [ backgroundColor (rgba 128 128 128 0.05)
                 ]
+            , cursor (if mode == EditorMode then move else default)
             ]
-        , onWithoutProp "dragstart" (DragStart (DraggingProcessState { process = process }))
+        , onWithoutProp "dragstart" (DragStart (DraggingProcessState { workflowKind = workflowKind, process = process }))
         , onWithoutProp "dragend" DragEnd
         , attrDraggable mode
         ]
         viewProcessItems
 
 
-viewProcessItem mode process processItem =
+viewProcessItem workflowKind state mode process processItem =
     let
         viewName =
             div
@@ -425,16 +457,30 @@ viewProcessItem mode process processItem =
             process.items
                 |> List.elemIndex (Just processItem)
                 |> Maybe.withDefault 0  -- unattainable result
+
+        style =
+            case state of
+                NormalProcessItemState ->
+                    Css.batch
+                        [ border3 (rem 0.1) solid (rgb 4 4 4)
+                        , backgroundColor (rgb 255 255 255)
+                        ]
+
+                ActiveProcessItemState ->
+                    Css.batch
+                        [  border3 (rem 0.1) solid (rgb 10 124 10)
+                        , backgroundColor (rgb 216 255 211)
+                        , color (rgb 10 124 10)
+                        ]
     in
     div
         [ css
-            [ border3 (rem 0.1) solid (rgb 4 4 4)
+            [ style
             , margin (rem 0.5)
             , padding (rem 0.25)
             , minWidth (rem 10)
             , height (rem 3)
             , overflowX hidden
-            , backgroundColor (rgb 255 255 255)
             , hover
                 [ border3 (rem 0.1) solid (rgb 10 124 10)
                 , backgroundColor (rgb 216 255 211)
@@ -449,18 +495,17 @@ viewProcessItem mode process processItem =
                 ]
             ]
         , attrDraggable mode
-        , onWithoutProp "dragstart" (DragStart (DraggingProcessItemState { process = process, item = processItem, itemIndex = itemIndex }))
+        , onWithoutProp
+            "dragstart"
+            (DragStart (DraggingProcessItemState { workflowKind = workflowKind, process = process, item = processItem, itemIndex = itemIndex }))
         , onWithoutProp "dragend" DragEnd
         , onWithoutProp "dragenter" (DragTargetOnDraggableArea True)
         , onWithoutProp "dragleave" (DragTargetOnDraggableArea False)
-        , onWithoutProp "drop" (Drop (DropOnAnotherProcessItem process processItem itemIndex))
+        , onWithoutProp "drop" (Drop workflowKind (DropOnAnotherProcessItem process processItem itemIndex))
         , onWithoutDef "dragover" Idle
         , onClick (ToggleProcessItemSelection process processItem)
         ]
-        [ div
-            []
-            [ viewName
-            ]
+        [ viewName
         ]
 
 
@@ -510,8 +555,10 @@ viewEmptyItem workflowKind mode droppableAreaMode process itemIndex =
         , onClick (TempIdRequested (NewItem workflowKind process { id = "", name = newItemName, description = "" } itemIndex))
         , onWithoutDef "dragover" Idle
         , attrDraggable mode
-        , onStd "drop" (Drop (DropOnEmptySlot process itemIndex))
-        , onWithoutProp "dragstart" (DragStart (DraggingEmptyItemState { process = process, itemIndex = itemIndex }))
+        , onStd "drop" (Drop workflowKind (DropOnEmptySlot process itemIndex))
+        , onWithoutProp
+            "dragstart"
+            (DragStart (DraggingEmptyItemState { workflowKind = workflowKind, process = process, itemIndex = itemIndex }))
         , onWithoutProp "dragend" DragEnd
         , onStd "dragenter" (DragTargetOnDraggableArea True)
         , onStd "dragleave" (DragTargetOnDraggableArea False)
@@ -560,7 +607,7 @@ viewNewSlotButton workflowKind droppableAreaMode process =
             ]
         , onClick (NewItemSlot workflowKind process)
         , onWithoutDef "dragover" Idle
-        , onStd "drop" (Drop (DropOnNewSlot process))
+        , onStd "drop" (Drop workflowKind (DropOnNewSlot process))
         , onStd "dragenter" (DragTargetOnDraggableArea True)
         , onStd "dragleave" (DragTargetOnDraggableArea False)
         ]
@@ -604,8 +651,8 @@ viewAddProcessButton workflowKind processes =
         [ text "➕" ]
 
 
-viewBin : DroppableAreaMode -> Html Msg
-viewBin droppableAreaMode =
+viewBin : WorkflowKind -> DroppableAreaMode -> Html Msg
+viewBin workflowKind droppableAreaMode =
     let
         droppableStyles =
             let
@@ -619,21 +666,15 @@ viewBin droppableAreaMode =
                         ]
             in
             case droppableAreaMode of
-                ReadyToReceiveProcessItem ->
-                    droppableReadyStyles
-
-                ReadyToReceiveEmptyItem ->
-                    droppableReadyStyles
-
-                ReadyToReceiveProcess->
-                    droppableReadyStyles
-
-                _ ->
+                Normal ->
                     Css.batch
                         [ border3 (rem 0.1) dashed (rgb 4 4 4)
                         , opacity (num 0.25)
                         , display none
                         ]
+
+                _ ->
+                    droppableReadyStyles
 
         dropMsg =
             case droppableAreaMode of
@@ -641,7 +682,7 @@ viewBin droppableAreaMode =
                     Idle
 
                 _ ->
-                    Drop DropInBin
+                    Drop workflowKind DropInBin
     in
     div
         [ css
@@ -651,8 +692,8 @@ viewBin droppableAreaMode =
             , right (rem 0)
             , margin (rem 0.5)
             , padding (rem 0.25)
-            , width (vw 50)
-            , height (vh 50)
+            , width (vw 10)
+            , height (vh 10)
             ]
         , onWithoutDef "dragover" Idle
         , onStd "drop" dropMsg

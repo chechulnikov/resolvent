@@ -145,15 +145,16 @@ update msg model =
                     , Cmd.none
                     )
 
-                ProcessDesigner.Drop target ->
-                    (dropOn target |> updateDesignerModel, Cmd.none)
+                ProcessDesigner.Drop workflowKind target ->
+                    let updateFn = dropOn target designerModel in
+                    (updateWorkflow workflowKind updateFn updateFn >> clearDraggingState |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.DragTargetOnDraggableArea hasTargeted ->
                     (toggleTargetingOfDraggingState hasTargeted |> updateDesignerModel, Cmd.none)
 
                 ProcessDesigner.ToggleProcessItemSelection process processItem ->
                     -- TODO !!!!!! TEST DATA !!!!!!
-                    (toggleSubProcess process processItem TestData.testSubProcesses |> updateDesignerModel, Cmd.none)
+                    (toggleSubWorkflow process processItem (TestData.testSubProcesses processItem.id) |> updateDesignerModel, Cmd.none)
 
         BoardDesignerMsg designerModel boardDesignerMsg ->
             case boardDesignerMsg of
